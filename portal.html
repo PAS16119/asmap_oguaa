@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Oguaa SHTS — Parent Portal</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://js.paystack.co/v1/inline.js"></script>
+<style>
+:root{--g1:#0a3d1f;--g2:#1a6b3c;--g3:#2d9558;--g5:#e8f5ee;--gold:#c8860a;--goldp:#fef9ec;--red:#c0392b;--redp:#fdecea;--blue:#1565c0;--bluep:#e3f0ff;--amber:#d97706;--amberp:#fffbeb;--gray:#6b7280;--grayl:#f3f4f6;--grayb:#e5e7eb;--white:#fff;--text:#111827;--textm:#6b7280;--r:12px;--rs:8px;--shadow:0 2px 12px rgba(0,0,0,.08);}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Outfit',sans-serif;background:#eef4ee;color:var(--text);min-height:100vh;font-size:15px;}
+.screen{display:none;min-height:100vh;flex-direction:column;}
+.screen.active{display:flex;}
+.ptopbar{background:var(--g1);color:#fff;padding:0 16px;height:56px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+.ptopbar-b{display:flex;flex-direction:column;}
+.ptopbar-b span:first-child{font-size:15px;font-weight:800;}
+.ptopbar-b span:last-child{font-size:10px;opacity:.6;}
+.ptopbar button{background:none;border:1px solid rgba(255,255,255,.3);color:#fff;padding:5px 12px;border-radius:20px;font-family:'Outfit',sans-serif;font-size:11px;cursor:pointer;}
+.cw{flex:1;display:flex;align-items:center;justify-content:center;padding:20px;}
+.card{background:var(--white);border-radius:20px;padding:28px 24px;width:100%;max-width:400px;box-shadow:0 8px 40px rgba(0,0,0,.12);}
+.card-t{font-size:18px;font-weight:800;color:var(--g1);margin-bottom:6px;}
+.card-s{font-size:13px;color:var(--textm);margin-bottom:20px;line-height:1.5;}
+.fgrp{margin-bottom:14px;}
+.fgrp label{display:block;font-size:11px;font-weight:700;color:var(--textm);margin-bottom:5px;letter-spacing:.3px;}
+.fgrp input,.fgrp select{width:100%;padding:12px 14px;border:1.5px solid var(--grayb);border-radius:var(--rs);font-family:'Outfit',sans-serif;font-size:14px;color:var(--text);}
+.fgrp input:focus,.fgrp select:focus{outline:none;border-color:var(--g2);}
+.btn{display:flex;align-items:center;justify-content:center;gap:7px;width:100%;padding:13px;border:none;border-radius:var(--rs);font-family:'Outfit',sans-serif;font-size:15px;font-weight:700;cursor:pointer;}
+.btn-g{background:var(--g2);color:#fff;}
+.btn-g:hover{background:var(--g3);}
+.btn-g:disabled{background:var(--grayb);cursor:not-allowed;}
+.btn-gold{background:var(--gold);color:#fff;}
+.btn-out{background:transparent;border:1.5px solid var(--grayb);color:var(--text);}
+.btn-out:hover{border-color:var(--g2);color:var(--g2);}
+.alert{border-radius:var(--rs);padding:10px 14px;font-size:13px;margin-bottom:14px;display:none;line-height:1.5;}
+.a-red{background:var(--redp);color:var(--red);}
+.a-green{background:var(--g5);color:var(--g2);}
+.a-amber{background:var(--amberp);color:var(--amber);}
+.sc{background:linear-gradient(135deg,var(--g1),var(--g2));border-radius:12px;padding:16px;color:#fff;margin-bottom:16px;}
+.sc-n{font-size:17px;font-weight:800;margin-bottom:4px;}
+.sc-m{font-size:12px;opacity:.8;line-height:1.8;}
+.sc-bd{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;}
+.sc-b{padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700;background:rgba(255,255,255,.18);color:#fff;}
+.ps{border:1.5px solid var(--grayb);border-radius:10px;padding:14px;margin-bottom:16px;}
+.pr{display:flex;justify-content:space-between;padding:5px 0;font-size:13px;border-bottom:1px solid var(--grayl);}
+.pr:last-child{border-bottom:none;font-weight:700;font-size:15px;padding-top:10px;}
+.pr span:last-child{color:var(--g2);}
+.pc{padding:14px;max-width:600px;margin:0 auto;flex:1;}
+.pcard{background:var(--white);border-radius:var(--r);padding:16px;box-shadow:var(--shadow);margin-bottom:14px;}
+.pct{font-size:13px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:7px;}
+.sh{background:linear-gradient(135deg,var(--g1),var(--g2));border-radius:var(--r);padding:20px;color:#fff;margin-bottom:14px;}
+.sh-n{font-size:20px;font-weight:800;margin-bottom:4px;}
+.sh-m{font-size:12px;opacity:.75;line-height:1.8;}
+.sh-bd{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;}
+.sh-b{padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;background:rgba(255,255,255,.18);color:#fff;}
+.psg{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;}
+.psc{background:var(--white);border-radius:var(--r);padding:14px;box-shadow:var(--shadow);border-left:4px solid var(--g2);}
+.psc.gold{border-left-color:var(--gold);}
+.psc.red{border-left-color:var(--red);}
+.psc.blue{border-left-color:var(--blue);}
+.psv{font-size:22px;font-weight:800;}
+.psl{font-size:11px;color:var(--textm);margin-top:2px;}
+.twrap{overflow-x:auto;}
+table{width:100%;border-collapse:collapse;font-size:12px;}
+th{background:var(--grayl);padding:8px 10px;text-align:left;font-weight:700;font-size:11px;color:var(--textm);}
+td{padding:8px 10px;border-bottom:1px solid var(--grayb);}
+tr:last-child td{border-bottom:none;}
+.badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700;}
+.bg{background:var(--g5);color:var(--g2);}
+.pta-c{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;}
+.pta-d{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;}
+.pta-d.att{background:var(--g5);color:var(--g2);}
+.pta-d.miss{background:var(--redp);color:var(--red);}
+.un{background:var(--goldp);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--gold);text-align:center;margin-bottom:14px;}
+.cs{border:2px dashed var(--grayb);border-radius:10px;padding:20px;text-align:center;color:var(--textm);font-size:13px;}
+.loader{text-align:center;padding:30px;color:var(--textm);}
+.spin{display:inline-block;width:28px;height:28px;border:3px solid var(--grayb);border-top-color:var(--g2);border-radius:50%;animation:spin .8s linear infinite;margin-bottom:10px;}
+@keyframes spin{to{transform:rotate(360deg)}}
+.pf{text-align:center;font-size:11px;color:var(--textm);padding:20px 0 40px;line-height:1.8;}
+@media(min-width:480px){.psg{grid-template-columns:repeat(4,1fr);}}
+</style>
+</head>
+<body>
+
+<!-- SCREEN 1: BECE LOOKUP -->
+<div id="s-lookup" class="screen active">
+  <div class="ptopbar">
+    <div class="ptopbar-b"><span>Oguaa SHTS</span><span>Parent Portal</span></div>
+  </div>
+  <div class="cw">
+    <div class="card">
+      <div class="card-t">🔍 Find Your Ward</div>
+      <div class="card-s">Enter your ward's BECE Index Number from their placement letter.</div>
+      <div class="alert a-red" id="e-lookup"></div>
+      <div class="fgrp">
+        <label>BECE INDEX NUMBER</label>
+        <input type="text" id="bece-inp" placeholder="e.g. 3012345678"
+          style="letter-spacing:2px;font-size:16px;text-align:center;text-transform:uppercase"
+          onkeydown="if(event.key==='Enter')lookupStudent()"
+          oninput="this.value=this.value.toUpperCase()">
+      </div>
+      <button class="btn btn-g" onclick="lookupStudent()" id="btn-lookup">Find Student →</button>
+      <div style="margin-top:16px;border-top:1px solid var(--grayb);padding-top:14px;">
+        <div style="font-size:12px;color:var(--textm);margin-bottom:8px;font-weight:600">ALREADY HAVE A PIN?</div>
+        <button class="btn btn-out" onclick="goScreen('s-pin')" style="padding:10px">Enter PIN directly →</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SCREEN 2: CONFIRM & PAY -->
+<div id="s-pay" class="screen">
+  <div class="ptopbar">
+    <div class="ptopbar-b"><span>Oguaa SHTS</span><span>Portal Payment</span></div>
+    <button onclick="goScreen('s-lookup')">← Back</button>
+  </div>
+  <div class="cw">
+    <div class="card">
+      <div class="card-t">✅ Confirm & Pay</div>
+      <div id="sc-box"></div>
+      <div class="alert a-red" id="e-pay"></div>
+      <div class="alert a-amber" id="i-pay" style="display:block">ℹ️ Payment gives <strong>2 views</strong> of your ward's report this semester. PIN sent by SMS immediately.</div>
+      <div class="ps" id="pay-sum"></div>
+      <div class="fgrp">
+        <label>YOUR PHONE (to receive PIN by SMS)</label>
+        <input type="tel" id="pay-phone" placeholder="e.g. 0241234567">
+      </div>
+      <div class="fgrp">
+        <label>NETWORK</label>
+        <select id="pay-net">
+          <option value="mtn">MTN Mobile Money</option>
+          <option value="vod">Vodafone Cash</option>
+          <option value="tgo">AirtelTigo Money</option>
+        </select>
+      </div>
+      <button class="btn btn-gold" onclick="pay()" id="btn-pay">💳 Pay via Mobile Money</button>
+      <div style="text-align:center;font-size:11px;color:var(--textm);margin-top:10px">Secured by Paystack · Encrypted payment</div>
+    </div>
+  </div>
+</div>
+
+<!-- SCREEN 3: PIN ENTRY -->
+<div id="s-pin" class="screen">
+  <div class="ptopbar">
+    <div class="ptopbar-b"><span>Oguaa SHTS</span><span>Enter PIN</span></div>
+    <button onclick="goScreen('s-lookup')">← Back</button>
+  </div>
+  <div class="cw">
+    <div class="card">
+      <div class="card-t">🔐 Enter Your PIN</div>
+      <div class="card-s">The 8-character PIN sent to you by SMS from Oguaa SHTS.</div>
+      <div class="alert a-red" id="e-pin"></div>
+      <div class="alert a-green" id="ok-pin"></div>
+      <div class="fgrp">
+        <label>ACCESS PIN</label>
+        <input type="text" id="pin-inp" maxlength="8" placeholder="XXXXXXXX"
+          style="letter-spacing:4px;font-size:20px;text-align:center;text-transform:uppercase"
+          onkeydown="if(event.key==='Enter')checkPin()"
+          oninput="this.value=this.value.toUpperCase()">
+      </div>
+      <button class="btn btn-g" onclick="checkPin()" id="btn-pin">View Report →</button>
+      <div style="text-align:center;margin-top:12px">
+        <button class="btn btn-out" onclick="goScreen('s-lookup')" style="padding:10px;font-size:13px">No PIN yet? Pay here</button>
+      </div>
+      <div style="font-size:11px;color:var(--textm);text-align:center;margin-top:14px;line-height:1.7">
+        PIN valid for 2 views per semester.<br>School office: 0247595408
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SCREEN 4: REPORT -->
+<div id="s-report" class="screen">
+  <div class="ptopbar">
+    <div class="ptopbar-b">
+      <span id="rpt-name">Report</span>
+      <span id="rpt-class"></span>
+    </div>
+    <button onclick="logout()">Sign Out</button>
+  </div>
+  <div class="pc" id="rpt-content">
+    <div class="loader"><div class="spin"></div><div>Loading…</div></div>
+  </div>
+</div>
+
+<script>
+const SUPA_URL='https://wwcvvnscekpdrtadqgjs.supabase.co';
+const SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind3Y3Z2bnNjZWtwZHJ0YWRxZ2pzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2OTM1MjgsImV4cCI6MjA4OTI2OTUyOH0.EoZiOyBYzHz9Dh7A-iZW1Kzaa7dM8JJO9EuGtYAMnVk';
+const HDR={'Content-Type':'application/json','apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY};
+
+var STUDENT=null, FEE=10, PS_KEY='';
+
+function sem(){var n=new Date(),y=n.getFullYear(),m=n.getMonth()+1,ay=m>=9?(y+'_'+(y+1)):((y-1)+'_'+y),t=m>=9?'T1':m<=4?'T2':'T3';return ay+'_'+t;}
+function goScreen(id){document.querySelectorAll('.screen').forEach(function(s){s.classList.remove('active');});document.getElementById(id).classList.add('active');window.scrollTo(0,0);}
+function showErr(id,msg){var e=document.getElementById(id);if(e){e.textContent=msg;e.style.display='block';}}
+function hideErr(id){var e=document.getElementById(id);if(e)e.style.display='none';}
+function logout(){STUDENT=null;document.getElementById('bece-inp').value='';document.getElementById('pin-inp').value='';goScreen('s-lookup');}
+
+async function loadCfg(){
+  try{
+    var r=await fetch(SUPA_URL+'/rest/v1/app_config?key=eq.main&select=settings',{headers:HDR});
+    var d=await r.json();
+    if(d&&d[0]&&d[0].settings){FEE=parseFloat(d[0].settings.portalFee||10);PS_KEY=d[0].settings.paystackPublicKey||'';}
+  }catch(e){}
+}
+
+// SCREEN 1
+async function lookupStudent(){
+  var bece=(document.getElementById('bece-inp').value||'').trim().toUpperCase();
+  hideErr('e-lookup');
+  if(!bece){showErr('e-lookup','Please enter your BECE Index Number');return;}
+  var btn=document.getElementById('btn-lookup');
+  btn.textContent='Searching…';btn.disabled=true;
+  try{
+    var r=await fetch(SUPA_URL+'/rest/v1/students?bece_index=eq.'+encodeURIComponent(bece)+'&select=*',{headers:HDR});
+    var d=await r.json();
+    if(!d||!d.length){showErr('e-lookup','No student found with that BECE Index Number.\nCheck the number or contact the school office: 0247595408');return;}
+    STUDENT=d[0];buildPayScreen(STUDENT);goScreen('s-pay');
+  }catch(e){showErr('e-lookup','Connection error. Check your internet and try again.');}
+  finally{btn.textContent='Find Student →';btn.disabled=false;}
+}
+
+// SCREEN 2
+function buildPayScreen(s){
+  document.getElementById('sc-box').innerHTML=
+    '<div class="sc"><div class="sc-n">'+s.full_name+'</div>'
+    +'<div class="sc-m">Class: '+s.class_name+' &nbsp;|&nbsp; Form: '+(s.form||'—')+'<br>Programme: '+(s.programme||'—')+' &nbsp;|&nbsp; House: '+(s.house||'—')+'</div>'
+    +'<div class="sc-bd">'+(s.residential_status?'<span class="sc-b">'+s.residential_status+'</span>':'')+(s.admission_year?'<span class="sc-b">'+s.admission_year+'</span>':'')+'</div></div>';
+  var s2=sem();
+  document.getElementById('pay-sum').innerHTML=
+    '<div class="pr"><span>Portal Access Fee</span><span>GHS '+FEE.toFixed(2)+'</span></div>'
+    +'<div class="pr"><span>Semester</span><span>'+s2.replace(/_/g,' ')+'</span></div>'
+    +'<div class="pr"><span>Views</span><span>2 views</span></div>'
+    +'<div class="pr"><span><strong>Total</strong></span><span><strong>GHS '+FEE.toFixed(2)+'</strong></span></div>';
+}
+
+async function pay(){
+  var phone=(document.getElementById('pay-phone').value||'').trim();
+  hideErr('e-pay');
+  if(!phone){showErr('e-pay','Enter your phone number to receive the PIN by SMS');return;}
+  if(!PS_KEY){showErr('e-pay','Online payment not yet configured. Please pay at the school office.');return;}
+  var btn=document.getElementById('btn-pay');
+  btn.textContent='Opening payment…';btn.disabled=true;
+  var ref='OGUAA_'+Date.now()+'_'+Math.random().toString(36).substring(2,8).toUpperCase();
+  try{
+    var handler=PaystackPop.setup({
+      key:PS_KEY,
+      email:'parent.'+STUDENT.bece_index+'@oguaashts.edu.gh',
+      amount:Math.round(FEE*100),
+      currency:'GHS',
+      ref:ref,
+      channels:['mobile_money'],
+      metadata:{
+        bece_index:STUDENT.bece_index,student_name:STUDENT.full_name,
+        student_id:STUDENT.id,parent_phone:phone,semester:sem(),
+        custom_fields:[{display_name:'Student',variable_name:'student',value:STUDENT.full_name}]
+      },
+      onClose:function(){btn.textContent='💳 Pay via Mobile Money';btn.disabled=false;},
+      callback:function(response){btn.textContent='Verifying…';verifyPay(response.reference,phone);}
+    });
+    handler.openIframe();
+  }catch(e){showErr('e-pay','Could not open payment. Try again or pay at school.');btn.textContent='💳 Pay via Mobile Money';btn.disabled=false;}
+}
+
+async function verifyPay(ref,phone){
+  var btn=document.getElementById('btn-pay');
+  try{
+    var r=await fetch(SUPA_URL+'/functions/v1/portal-payment',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+SUPA_KEY},
+      body:JSON.stringify({reference:ref,student_id:STUDENT.id,student_name:STUDENT.full_name,bece_index:STUDENT.bece_index,parent_phone:phone,semester:sem()})
+    });
+    var res=await r.json();
+    if(res.success&&res.pin){
+      document.getElementById('pin-inp').value=res.pin;
+      document.getElementById('ok-pin').textContent='✅ Payment confirmed! PIN: '+res.pin+' — SMS sent to '+phone;
+      document.getElementById('ok-pin').style.display='block';
+      goScreen('s-pin');
+    }else{
+      showErr('e-pay','Payment received but PIN error. Keep ref: '+ref+' and contact school: 0247595408');
+    }
+  }catch(e){showErr('e-pay','Verification error. Keep ref: '+ref+' — contact school: 0247595408');}
+  finally{btn.textContent='💳 Pay via Mobile Money';btn.disabled=false;}
+}
+
+// SCREEN 3
+async function checkPin(){
+  var pin=(document.getElementById('pin-inp').value||'').trim().toUpperCase();
+  hideErr('e-pin');
+  if(pin.length<6){showErr('e-pin','Enter your full PIN');return;}
+  var btn=document.getElementById('btn-pin');btn.textContent='Checking…';btn.disabled=true;
+  try{
+    var r=await fetch(SUPA_URL+'/rest/v1/students?portal_pin=eq.'+pin+'&portal_unlocked=eq.true&select=*',{headers:HDR});
+    var d=await r.json();
+    if(!d||!d.length){showErr('e-pin','PIN not found or not activated.\nIf you just paid, wait a moment and retry.\nSchool office: 0247595408');return;}
+    var s=d[0];
+    var uk='portal_'+pin+'_'+sem();
+    var uses=parseInt(localStorage.getItem(uk)||'0');
+    if(uses>=2){showErr('e-pin','PIN limit reached (2 views) for this semester.\nPay for new access or contact school: 0247595408');return;}
+    localStorage.setItem(uk,String(uses+1));
+    await showReport(s,uses+1);
+  }catch(e){showErr('e-pin','Connection error. Check internet and try again.');}
+  finally{btn.textContent='View Report →';btn.disabled=false;}
+}
+
+// SCREEN 4
+async function showReport(s,viewNum){
+  goScreen('s-report');
+  document.getElementById('rpt-name').textContent=s.full_name||'Report';
+  document.getElementById('rpt-class').textContent=(s.class_name||'')+(s.form?' · '+s.form:'');
+  document.getElementById('rpt-content').innerHTML='<div class="loader"><div class="spin"></div><div>Loading report…</div></div>';
+
+  var pays=[],ptaAtt=0,ptaTotal=0;
+  try{var pr=await fetch(SUPA_URL+'/rest/v1/payments?student_name=eq.'+encodeURIComponent(s.full_name)+'&class_name=eq.'+encodeURIComponent(s.class_name||'')+'&approval_status=eq.confirmed&order=date.desc&select=*',{headers:HDR});pays=await pr.json()||[];}catch(e){}
+  try{var par=await fetch(SUPA_URL+'/rest/v1/pta_attendance?student_id=eq.'+s.id+'&select=*',{headers:HDR});var pd=await par.json()||[];if(Array.isArray(pd)){ptaTotal=pd.length;ptaAtt=pd.filter(function(x){return x.parent_attended;}).length;}}catch(e){}
+
+  var paid=pays.reduce(function(a,p){return a+parseFloat(p.raw_amount||p.amount||0);},0);
+  var usesLeft=Math.max(0,2-viewNum);
+  var h='';
+
+  h+='<div class="un">⏳ '+usesLeft+' view'+(usesLeft===1?'':'s')+' remaining this semester</div>';
+
+  h+='<div class="sh"><div class="sh-n">'+(s.full_name||'')+'</div>'
+    +'<div class="sh-m">'+(s.class_name?'Class: '+s.class_name+' &nbsp;|&nbsp; ':'')+(s.form?'Form: '+s.form+' &nbsp;|&nbsp; ':'')+(s.programme||'')+'</div>'
+    +'<div class="sh-bd">'+(s.house?'<span class="sh-b">🏠 '+s.house+'</span>':'')+(s.residential_status?'<span class="sh-b">'+s.residential_status+'</span>':'')+(s.gender?'<span class="sh-b">'+s.gender+'</span>':'')+'</div></div>';
+
+  h+='<div class="psg">'
+    +'<div class="psc gold"><div class="psv">GHS '+paid.toLocaleString()+'</div><div class="psl">Total paid</div></div>'
+    +'<div class="psc"><div class="psv">'+pays.length+'</div><div class="psl">Payments</div></div>'
+    +'<div class="psc blue"><div class="psv">'+ptaAtt+'/'+(ptaTotal||'—')+'</div><div class="psl">PTA attended</div></div>'
+    +'<div class="psc red"><div class="psv">'+(s.status==='active'?'Active':s.status||'—')+'</div><div class="psl">Status</div></div>'
+    +'</div>';
+
+  h+='<div class="pcard"><div class="pct">💰 Payment History</div>';
+  if(!pays.length){h+='<div style="text-align:center;padding:16px;color:var(--textm);font-size:13px">No confirmed payments yet.</div>';}
+  else{h+='<div class="twrap"><table><tr><th>Date</th><th>GHS</th><th>Purpose</th></tr>'+pays.map(function(p){return'<tr><td>'+(p.date||'')+'</td><td><strong>'+parseFloat(p.raw_amount||p.amount||0).toLocaleString()+'</strong></td><td><span class="badge bg">'+(p.purpose||'General')+'</span></td></tr>';}).join('')+'</table></div>';}
+  h+='</div>';
+
+  if(ptaTotal>0){
+    h+='<div class="pcard"><div class="pct">👥 PTA Attendance</div>'
+      +'<div style="font-size:13px;margin-bottom:10px">Parent attended <strong>'+ptaAtt+'</strong> of <strong>'+ptaTotal+'</strong> meetings.</div>'
+      +'<div class="pta-c">';
+    for(var i=0;i<ptaTotal;i++)h+='<div class="pta-d '+(i<ptaAtt?'att':'miss')+'">'+(i<ptaAtt?'✓':'✗')+'</div>';
+    h+='</div></div>';
+  }
+
+  h+='<div class="pcard"><div class="pct">📚 Academic Performance</div><div class="cs"><div style="font-size:28px;margin-bottom:8px">📊</div>Scores and grades will appear here once subject teachers enter results for this term.</div></div>';
+  h+='<div class="pcard"><div class="pct">⭐ Behaviour & Conduct</div><div class="cs"><div style="font-size:28px;margin-bottom:8px">🌟</div>Conduct report from House Master/Mistress will appear here.</div></div>';
+
+  h+='<div class="pcard"><div class="pct">👤 Student Information</div><table style="width:100%">'
+    +pr2('Full Name',s.full_name)+pr2('BECE Index',s.bece_index||'—')+pr2('Date of Birth',s.date_of_birth||'—')
+    +pr2('NHIS Number',s.nhis_number||'—')+pr2('Hometown',s.hometown||'—')+pr2('Admission Year',s.admission_year||'—')
+    +'</table></div>';
+
+  if(s.items_submitted&&s.items_submitted.length){
+    h+='<div class="pcard"><div class="pct">✅ Items Submitted</div><div style="display:flex;gap:6px;flex-wrap:wrap">'
+      +s.items_submitted.map(function(i){return'<span class="badge bg">✓ '+i+'</span>';}).join('')+'</div></div>';
+  }
+
+  h+='<div class="pf">Oguaa Senior High Technical School · Cape Coast, Ghana<br>Boys: 0247595408 / 0242058935 &nbsp;|&nbsp; Girls: 0243169960 / 0244131353<br>ASMaP — Adombra School Management Platform</div>';
+
+  document.getElementById('rpt-content').innerHTML=h;
+}
+
+function pr2(l,v){return'<tr><td style="color:var(--textm);font-size:12px;padding:6px 0;width:40%;vertical-align:top">'+l+'</td><td style="font-weight:600;font-size:13px;padding:6px 0">'+(v||'—')+'</td></tr>';}
+
+window.addEventListener('load',async function(){
+  await loadCfg();
+  var p=new URLSearchParams(window.location.search).get('pin');
+  if(p){document.getElementById('pin-inp').value=p.toUpperCase();goScreen('s-pin');checkPin();}
+});
+</script>
+</body>
+</html>
