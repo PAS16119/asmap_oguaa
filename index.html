@@ -878,6 +878,8 @@ async function silentRefresh() {
         purpose: pPurEl  ? pPurEl.value  : '',
         status:  pStEl   ? pStEl.value   : ''
       });
+    } else if (tabId === 'settings') {
+      // Don't auto-refresh Settings - it wipes password fields while typing
     } else if (tabId === 'ledger') {
       // Don't re-render ledger during auto-refresh (too expensive and wipes class selection)
       // Just update data silently - user can refresh manually
