@@ -1,0 +1,284 @@
+diff --git a/index.html b/index.html
+index 973696f..d8b5a86 100644
+--- a/index.html
++++ b/index.html
+@@ -420,4 +420,72 @@ function isFreshInstall() {
+ 
+ 
++// ══════════════════════════════════════════════════
++// AUTH — Supabase Auth (phase 1). Passwords are checked by Supabase, never by this file.
++// ══════════════════════════════════════════════════
++var AUTH_EMAIL_DOMAIN = 'asmap-oguaa.vercel.app'; // must match the Edge Functions
++var AUTH = { access:'', refresh:'', exp:0 };
++var _refreshing = null;
++
++function authEmail(username) {
++  return (username||'').trim().toLowerCase().replace(/[^a-z0-9._-]/g,'_') + '@' + AUTH_EMAIL_DOMAIN;
++}
++function setAuthHeader(token) {
++  HDR = Object.assign({}, HDR, { 'Authorization': 'Bearer ' + (token || SUPA_KEY) });
++}
++function authStore(d) {
++  AUTH.access = d.access_token; AUTH.refresh = d.refresh_token;
++  AUTH.exp = Date.now() + (d.expires_in || 3600) * 1000;
++  setAuthHeader(AUTH.access);
++}
++async function authSignIn(username, password) {
++  const r = await fetch(SUPA_URL + '/auth/v1/token?grant_type=password', {
++    method:'POST', headers:{ 'apikey':SUPA_KEY, 'Content-Type':'application/json' },
++    body: JSON.stringify({ email: authEmail(username), password: password })
++  });
++  if (!r.ok) return null;
++  const d = await r.json(); authStore(d); return d;
++}
++async function ensureFreshToken() {
++  if (!AUTH.refresh) return true;
++  if (Date.now() < AUTH.exp - 120000) return true;
++  if (_refreshing) return _refreshing;
++  _refreshing = (async function(){
++    try {
++      const r = await fetch(SUPA_URL + '/auth/v1/token?grant_type=refresh_token', {
++        method:'POST', headers:{ 'apikey':SUPA_KEY, 'Content-Type':'application/json' },
++        body: JSON.stringify({ refresh_token: AUTH.refresh })
++      });
++      if (!r.ok) return false;
++      authStore(await r.json()); return true;
++    } catch(e) { return false; }
++    finally { _refreshing = null; }
++  })();
++  return _refreshing;
++}
++async function authSignOut() {
++  try {
++    if (AUTH.access) await fetch(SUPA_URL + '/auth/v1/logout', { method:'POST', headers:{ 'apikey':SUPA_KEY, 'Authorization':'Bearer '+AUTH.access } });
++  } catch(e) {}
++  AUTH = { access:'', refresh:'', exp:0 };
++  setAuthHeader('');
++}
++async function callAdminUsers(action, payload) {
++  await ensureFreshToken();
++  const r = await fetch(SUPA_URL + '/functions/v1/admin-users', {
++    method:'POST',
++    headers:{ 'Content-Type':'application/json', 'apikey':SUPA_KEY, 'Authorization':'Bearer '+AUTH.access },
++    body: JSON.stringify(Object.assign({ action: action }, payload))
++  });
++  const d = await r.json().catch(function(){ return {}; });
++  if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
++  return d;
++}
++function mapProfile(p) {
++  return { id:p.legacy_id, authId:p.id, username:p.username, name:p.full_name, role:p.role,
++    classes:p.assigned_classes||[], active:p.is_active, permissions:p.permissions||[],
++    phone:p.phone||'', dept:p.dept||'', house:p.house||'', teacherLink:p.teacher_link||'',
++    mustChange:!!p.must_change_password };
++}
++
+ async function sbGet(table, params='') {
+   const r = await fetch(`${SUPA_URL}/rest/v1/${table}?${params}`, { headers: HDR });
+@@ -572,12 +640,6 @@ async function syncFromSupabase(silent=false) {
+     }
+     // Users
+-    const users = await sbGet('users', 'select=*&order=created_at');
+-    if (users && users.length) {
+-      DB.users = users.map(u => ({
+-        id: u.id, username: u.username, password: u.password,
+-        role: u.role, name: u.full_name, classes: u.assigned_classes||[], active: u.is_active,
+-        permissions: u.permissions||[]
+-      }));
+-    }
++    const profs = await sbGet('profiles', 'select=*&order=created_at');
++    if (profs && profs.length) DB.users = profs.map(mapProfile);
+     // Students
+     const studs = await sbGet('students', 'select=*&order=full_name&limit=5000');
+@@ -704,29 +766,45 @@ function audit(action, details, table='', recordId='') {
+ async function doLogin() {
+   const u = document.getElementById('lu').value.trim();
+-  const p = document.getElementById('lp').value.trim();
++  const p = document.getElementById('lp').value;
+   const loginBtn = document.querySelector('#login-screen .btn-primary');
+   if (loginBtn) { loginBtn.textContent = 'Connecting…'; loginBtn.disabled = true; }
+-  // Sync from Supabase first so we have latest users
++  let prof = null;
++  try {
++    const sess = await authSignIn(u, p);
++    if (sess && sess.user) {
++      const rows = await sbGet('profiles', 'select=*&id=eq.' + sess.user.id);
++      if (rows && rows[0] && rows[0].is_active !== false) prof = rows[0];
++    }
++  } catch(e) { console.error('login failed', e); }
++  if (!prof) {
++    await authSignOut();
++    if (loginBtn) { loginBtn.textContent = 'Sign In →'; loginBtn.disabled = false; }
++    document.getElementById('login-err').style.display = 'block';
++    return;
++  }
++  currentUser = mapProfile(prof);
+   await syncFromSupabase();
+-  const user = DB.users.find(x => x.username === u && x.password === p && x.active !== false);
+   if (loginBtn) { loginBtn.textContent = 'Sign In →'; loginBtn.disabled = false; }
+-  if (!user) { document.getElementById('login-err').style.display = 'block'; return; }
+   document.getElementById('login-err').style.display = 'none';
+-  currentUser = user;
+   audit('LOGIN', 'Signed in');
+   initApp();
++  if (currentUser.mustChange) {
++    setTimeout(function(){ showTab('settings'); showToast('Please set a new password to continue', 'warning'); }, 600);
++  }
+ }
+ 
++function doLogout() {
++  if (currentUser) audit('LOGOUT', 'Signed out');
++  if (autoRefreshTimer) { clearInterval(autoRefreshTimer); autoRefreshTimer = null; }
++  const st = document.getElementById('sync-time');
++  if (st) st.remove();
++  authSignOut();
++  currentUser = null;
++  showScreen('login-screen');
++  document.getElementById('lu').value = '';
++  document.getElementById('lp').value = '';
++}
+ function confirmLogout() {
+-  showConfirm('Sign Out', 'Are you sure you want to sign out?', () => {
+-    audit('LOGOUT', 'Signed out');
+-    if (autoRefreshTimer) { clearInterval(autoRefreshTimer); autoRefreshTimer = null; }
+-    const st = document.getElementById('sync-time');
+-    if (st) st.remove();
+-    currentUser = null;
+-    showScreen('login-screen');
+-    document.getElementById('lu').value = '';
+-    document.getElementById('lp').value = '';
+-  }, 'Sign Out', 'btn-danger');
++  showConfirm('Sign Out', 'Are you sure you want to sign out?', doLogout, 'Sign Out', 'btn-danger');
+ }
+ 
+@@ -765,4 +843,5 @@ function initApp() {
+ async function silentRefresh() {
+   if (!currentUser) return;
++  if (!(await ensureFreshToken())) { showToast('Session expired. Please sign in again.', 'warning'); doLogout(); return; }
+   try {
+     await syncFromSupabase(true);
+@@ -2769,5 +2848,5 @@ function toggleUserFields() {
+ }
+ 
+-function submitAddUser() {
++async function submitAddUser() {
+   var name     = (document.getElementById('nu-name').value||'').trim();
+   var username = (document.getElementById('nu-user').value||'').trim();
+@@ -2776,4 +2855,5 @@ function submitAddUser() {
+   var role     = document.getElementById('nu-role').value;
+   if (!name||!username||!password) { showToast('Fill name, username and password','error'); return; }
++  if (password.length < 6) { showToast('Password must be at least 6 characters','error'); return; }
+   if (DB.users.find(function(u){ return u.username===username; })) { showToast('Username taken','warning'); return; }
+ 
+@@ -2800,20 +2880,23 @@ function submitAddUser() {
+   }
+ 
+-  var nu = { id:uid(), username, password, role, name, classes, active:true, permissions:perms,
++  var nu = { id:uid(), username, role, name, classes, active:true, permissions:perms,
+              phone:phone.trim(), dept, house, teacherLink };
++  try {
++    await callAdminUsers('create_user', { legacy_id:nu.id, username:username, password:password, role:role,
++      full_name:name, assigned_classes:classes, permissions:perms, phone:phone.trim(), dept:dept, house:house, teacher_link:teacherLink });
++  } catch(e) { showToast('Could not create user: ' + e.message, 'error'); return; }
+   DB.users.push(nu);
+   audit('ADD_USER', name+' ('+role+')', 'users');
+-  closeModal(); showToast('User created ✓','success');
+-  saveDB().then(function(){ renderSettings(); });
+-  sbPost('users',{id:nu.id,username,password,role,full_name:name,assigned_classes:classes,
+-    is_active:true,permissions:perms,phone:phone.trim(),dept,house,teacher_link:teacherLink}).catch(function(){});
++  closeModal(); showToast('User created ✓ (they must change the password at first sign-in)','success');
++  renderSettings();
+ }
+ 
+ function removeUser(id) {
+-  showConfirm('Remove User','Remove this user account?', ()=>{
++  showConfirm('Remove User','Remove this user account?', async ()=>{
++    try { await callAdminUsers('delete_user', { legacy_id:id }); }
++    catch(e) { showToast('Could not remove: ' + e.message, 'error'); return; }
+     DB.users = DB.users.filter(u=>u.id!==id);
+     audit('REMOVE_USER', id, 'users');
+     renderManage(); showToast('User removed','error');
+-    sbDelete('users', id).catch(()=>{});
+   });
+ }
+@@ -4657,17 +4740,19 @@ async function settleUnallocated(id, unalloc) {
+ // ══════════════════════════════
+ 
+-function changePassword() {
++async function changePassword() {
+   var oldP = (document.getElementById('cp-old')||{}).value || '';
+   var newP = (document.getElementById('cp-new')||{}).value || '';
+   var con  = (document.getElementById('cp-new2')||{}).value || '';
+   if (!oldP || !newP || !con) { showToast('Fill all password fields','error'); return; }
+-  if (oldP !== currentUser.password) { showToast('Current password incorrect','error'); return; }
+   if (newP !== con) { showToast('New passwords do not match','error'); return; }
+-  if (newP.length < 4) { showToast('Password must be at least 4 characters','error'); return; }
+-  currentUser.password = newP;
+-  var u = DB.users.find(function(x){ return x.id === currentUser.id; });
+-  if (u) u.password = newP;
+-  sbPatch('users', currentUser.id, {password: newP}).catch(function(){});
+-  saveDB().then(function(){ showToast('Password changed \u2713','success'); renderSettings(); });
++  if (newP.length < 6) { showToast('Password must be at least 6 characters','error'); return; }
++  if (newP === oldP) { showToast('Choose a password different from the current one','error'); return; }
++  var ok = await authSignIn(currentUser.username, oldP);
++  if (!ok) { showToast('Current password incorrect','error'); return; }
++  var r = await fetch(SUPA_URL + '/auth/v1/user', { method:'PUT', headers:{ 'Content-Type':'application/json', 'apikey':SUPA_KEY, 'Authorization':'Bearer '+AUTH.access }, body: JSON.stringify({ password:newP }) });
++  if (!r.ok) { var er = await r.json().catch(function(){ return {}; }); showToast('Could not change password: ' + (er.msg || er.message || r.status), 'error'); return; }
++  try { await fetch(SUPA_URL + '/rest/v1/rpc/clear_must_change', { method:'POST', headers:HDR, body:'{}' }); } catch(e) {}
++  currentUser.mustChange = false;
++  showToast('Password changed \u2713','success'); renderSettings();
+   audit('CHANGE_PASSWORD', currentUser.username, 'users', currentUser.id);
+ }
+@@ -4682,10 +4767,11 @@ function openEditUser(id) {
+     '<div class="fgrp"><label>FULL NAME</label><input type="text" id="eu-name" value="'+(u.name||'').replace(/"/g,'&quot;')+'"></div>'
+     +'<div class="fgrp"><label>USERNAME</label><input type="text" id="eu-user" value="'+u.username+'"></div>'
+-    +'<div class="fgrp"><label>NEW PASSWORD (leave blank to keep current)</label><input type="password" id="eu-pass" placeholder="Leave blank to keep"></div>'
++    +'<div class="fgrp"><label>NEW TEMPORARY PASSWORD (leave blank to keep current; min 6 characters)</label><input type="password" id="eu-pass" placeholder="Leave blank to keep"></div>'
+     +'<div class="fgrp"><label>ROLE</label><select id="eu-role" onchange="toggleEUPerms()">'
+-    +'<option value="coordinator"'+(u.role==='coordinator'?' selected':'')+'>Coordinator</option>'
+-    +'<option value="supervisor"'+(u.role==='supervisor'?' selected':'')+'>Supervisor</option>'
+-    +'<option value="viewer"'+(u.role==='viewer'?' selected':'')+'>Superintendent (read-only)</option>'
+-    +'<option value="admin"'+(u.role==='admin'?' selected':'')+'>Admin</option>'
++    +[['coordinator','Coordinator'],['supervisor','Supervisor'],['hod','HOD'],['critical_friend','Critical Friend'],
++      ['form_master','Form Master/Mistress'],['house_master','House Master/Mistress'],['sr_house_master','Senior House Master/Mistress'],
++      ['class_prefect','Class Prefect'],['pta_prefect','PTA Prefect'],['pta_executive','PTA Executive'],
++      ['viewer','Superintendent (read-only)'],['admin','Admin']].map(function(o){
++        return '<option value="'+o[0]+'"'+(u.role===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join('')
+     +'</select></div>'
+     +'<div class="fgrp" id="eu-cls-grp" style="'+(u.role==='viewer'?'display:none':'')+'"><label>ASSIGNED CLASSES (multi-select)</label>'
+@@ -4705,5 +4791,5 @@ function toggleEUPerms() {
+ }
+ 
+-function saveEditUser(id) {
++async function saveEditUser(id) {
+   var u = DB.users.find(function(x){ return x.id === id; });
+   if (!u) return;
+@@ -4711,5 +4797,5 @@ function saveEditUser(id) {
+   var uname = (document.getElementById('eu-user')||{}).value || '';
+   var pass  = (document.getElementById('eu-pass')||{}).value || '';
+-  var role  = (document.getElementById('eu-role')||{}).value || 'coordinator';
++  var role  = (document.getElementById('eu-role')||{}).value || u.role;
+   var clsSel = document.getElementById('eu-classes');
+   var classes = (role==='coordinator' && clsSel) ? Array.from(clsSel.selectedOptions).map(function(o){ return o.value; }) : (u.classes||[]);
+@@ -4717,13 +4803,13 @@ function saveEditUser(id) {
+   if (role === 'viewer') {
+     document.querySelectorAll('.eu-perm-cb:checked').forEach(function(cb){ perms.push(cb.value); });
+-  }
++  } else { perms = u.permissions||[]; }
+   if (!name.trim() || !uname.trim()) { showToast('Name and username required','error'); return; }
+-  u.name = name.trim(); u.username = uname.trim(); u.role = role;
+-  u.classes = classes; u.permissions = perms;
+-  if (pass) u.password = pass;
+-  var patch = {full_name:u.name, username:u.username, role:role, assigned_classes:classes, permissions:perms};
+-  if (pass) patch.password = pass;
+-  sbPatch('users', id, patch).catch(function(){});
+-  saveDB().then(function(){ closeModal(); showToast('User updated ✓','success'); renderSettings(); });
++  if (pass && pass.length < 6) { showToast('Password must be at least 6 characters','error'); return; }
++  var payload = { legacy_id:id, full_name:name.trim(), username:uname.trim(), role:role, assigned_classes:classes, permissions:perms };
++  if (pass) payload.password = pass;
++  try { await callAdminUsers('update_user', payload); }
++  catch(e) { showToast('Could not update: ' + e.message, 'error'); return; }
++  u.name = name.trim(); u.username = uname.trim(); u.role = role; u.classes = classes; u.permissions = perms;
++  closeModal(); showToast('User updated ✓','success'); renderSettings();
+   audit('EDIT_USER', u.username, 'users', id);
+ }
