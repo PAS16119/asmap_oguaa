@@ -355,6 +355,7 @@ tr:hover td{background:#f9fafb;}
   <div id="page-reports" class="page"></div>
   <div id="page-manage" class="page"></div>
   <div id="page-audit" class="page"></div>
+  <div id="page-lessons" class="page"></div>
   <div id="page-ledger" class="page"></div>
   <div id="page-settings" class="page"></div>
   <div id="page-admission" class="page"></div>
@@ -392,11 +393,9 @@ tr:hover td{background:#f9fafb;}
 <div class="toast" id="toast"></div>
 
 <script>
-// ══════════════════════════════════════════════════
 // ASMAP — MULTI-TENANT SUPABASE CONFIG
 // Each school deployment uses its own Supabase project.
 // Credentials stored in localStorage after first-run setup.
-// ══════════════════════════════════════════════════
 var _cfgRaw = (function(){
   try { return JSON.parse(localStorage.getItem('asmap_tenant_cfg')||'{}'); } catch(e){ return {}; }
 })();
@@ -419,9 +418,7 @@ function isFreshInstall() {
 }
 
 
-// ══════════════════════════════════════════════════
 // AUTH — Supabase Auth (phase 1). Passwords are checked by Supabase, never by this file.
-// ══════════════════════════════════════════════════
 var AUTH_EMAIL_DOMAIN = 'asmap-oguaa.vercel.app'; // must match the Edge Functions
 var AUTH = { access:'', refresh:'', exp:0 };
 var _refreshing = null;
@@ -520,9 +517,7 @@ async function sbUpsert(table, body, onConflict='') {
   return r.json();
 }
 
-// ══════════════════════════════════════════════════
 // LOCAL CACHE — fast UI, synced to Supabase
-// ══════════════════════════════════════════════════
 const DEFAULT_SETTINGS = {
   schoolName: 'Oguaa Senior High Technical School',
   schoolLocation: 'Cape Coast, Ghana',
@@ -579,7 +574,7 @@ const DEFAULT_TEACHERS = [
 let DB = {
   settings: {...DEFAULT_SETTINGS},
   years: [{id:'y1',name:'2024/2025',active:true,whatsappLink:'',admissionItems:['CUTLASS','BROOMS','BRUSH','DUSTERS','MUSCLE','DETTOL','PARAZONE','MOP','WASHING POWDER','BLEACHING POWDER','HOE','RAKE']}],
-  users: [{id:'u1',username:'admin',password:'admin123',role:'admin',name:'Administrator',classes:[]}],
+  users: [{id:'u1',username:'admin',role:'admin',name:'Administrator',classes:[]}],
   paySettings: {basePay:20,attendancePay:15,latenessDeduction:5,etAmount:500,motivationAmount:300,projectAmount:300},
   teachers: [...DEFAULT_TEACHERS],
   classes: ['AG1','ARTS1','ARTS2','ARTS3A','ARTS3B','ARTS4','ARTS5','ARTS6','BUS1','HOM1','HOM2','HOM3','SCI1','TECH1','TECH2','TECH3','VIS1','VIS2'],
@@ -619,9 +614,7 @@ async function saveDB() {
   })); } catch(e) {}
 }
 
-// ══════════════════════════════════════════════════
 // SYNC — load all live data from Supabase
-// ══════════════════════════════════════════════════
 async function syncFromSupabase(silent=false) {
   if (!silent) showSyncStatus('Connecting to database…');
   try {
@@ -745,9 +738,7 @@ function hideSyncStatus() {
 let currentUser = null;
 let activeCharts = {};
 
-// ══════════════════════════════
 // AUDIT
-// ══════════════════════════════
 function audit(action, details, table='', recordId='') {
   if (!currentUser) return;
   const entry = { id:uid(), userId:currentUser.id, userName:currentUser.name, action, details, ts:Date.now() };
@@ -760,9 +751,7 @@ function audit(action, details, table='', recordId='') {
   }).catch(()=>{});
 }
 
-// ══════════════════════════════
 // AUTH
-// ══════════════════════════════
 async function doLogin() {
   const u = document.getElementById('lu').value.trim();
   const p = document.getElementById('lp').value;
@@ -808,9 +797,7 @@ function confirmLogout() {
   showConfirm('Sign Out', 'Are you sure you want to sign out?', doLogout, 'Sign Out', 'btn-danger');
 }
 
-// ══════════════════════════════
 // APP INIT
-// ══════════════════════════════
 let autoRefreshTimer = null;
 
 function initApp() {
@@ -878,7 +865,7 @@ async function silentRefresh() {
         purpose: pPurEl  ? pPurEl.value  : '',
         status:  pStEl   ? pStEl.value   : ''
       });
-    } else if (tabId === 'settings') {
+    } else if (tabId === 'settings' || tabId === 'lessons') {
       // Don't auto-refresh Settings - it wipes password fields while typing
     } else if (tabId === 'ledger') {
       // Don't re-render ledger during auto-refresh (too expensive and wipes class selection)
@@ -976,6 +963,8 @@ function buildNav() {
   // Prefect reports
   if (['admin','class_prefect'].includes(r)) tabs.push({id:'prefect',icon:'👁',label:'Report'});
 
+  if (['admin','class_prefect'].includes(r)) tabs.push({id:'lessons',icon:'🕒',label:'Lessons'});
+
   // PTA
   if (['admin','pta_prefect','pta_executive','coordinator'].includes(r))
     tabs.push({id:'pta',icon:'👥',label:'PTA'});
@@ -1020,6 +1009,7 @@ function renderPage(id) {
     case 'reports': renderReports(); break;
     case 'manage': renderManage(); break;
     case 'audit': renderAudit(); break;
+    case 'lessons': renderLessons(); break;
     case 'ledger': renderLedger(); break;
     case 'settings': renderSettings(); break;
     case 'admission': renderAdmission(); break;
@@ -1040,9 +1030,7 @@ function updateApprovalBadge() {
   badge.style.display = n > 0 ? 'inline-block' : 'none';
 }
 
-// ══════════════════════════════
 // DASHBOARD
-// ══════════════════════════════
 function renderDashboard() {
   if (currentUser.role === 'viewer') { renderViewerDashboard(); return; }
   var el = document.getElementById('page-dashboard');
@@ -1194,9 +1182,7 @@ function buildAttRow(a, locked) {
   return parts.join('');
 }
 
-// ══════════════════════════════
 // ATTENDANCE
-// ══════════════════════════════
 function renderAttendance(filters) {
   if (currentUser.role === 'viewer') { renderViewerAttendance(); return; }
   const el = document.getElementById('page-attendance');
@@ -1463,9 +1449,7 @@ function delAtt(id) {
   });
 }
 
-// ══════════════════════════════
 // PAYMENTS
-// ══════════════════════════════
 function renderPayments(filters) {
   if (currentUser.role === 'viewer') { renderViewerPayments(); return; }
   const el = document.getElementById('page-payments');
@@ -1800,9 +1784,7 @@ function delPay(id) {
   });
 }
 
-// ══════════════════════════════
 // PAYMENT DETAIL VIEW
-// ══════════════════════════════
 function viewPayDetail(id) {
   const p = DB.payments.find(function(x){ return x.id===id; });
   if (!p) return;
@@ -1837,9 +1819,7 @@ function viewPayDetail(id) {
   openModal(p.student + ' — Payment Detail', html);
 }
 
-// ══════════════════════════════
 // COORDINATOR PAYMENT REPORT
-// ══════════════════════════════
 function renderCoordPaymentReport() {
   if (!currentUser || currentUser.role !== 'coordinator') return '';
   var myClasses = currentUser.classes || [];
@@ -1960,9 +1940,7 @@ function renderCoordPaymentReport() {
   return html;
 }
 
-// ══════════════════════════════
 // APPROVALS
-// ══════════════════════════════
 function renderApprovals() {
   var el = document.getElementById('page-approvals');
   var pendAtt = DB.attendance.filter(function(a){ return a.approvalStatus==='pending'; });
@@ -2114,9 +2092,7 @@ function updateAllocTotal(inputEl) {
     rem.style.color = left === 0 ? 'var(--g2)' : left > 0 ? 'var(--gold)' : 'var(--red)';
   }
 }
-// ══════════════════════════════
 // APPROVAL ACTION FUNCTIONS
-// ══════════════════════════════
 function approveAtt(id) {
   var a = DB.attendance.find(function(x){ return x.id===id; });
   if (!a) return;
@@ -2262,9 +2238,7 @@ function renderClassPayDetail(cls) {
   </table></div>`;
 }
 
-// ══════════════════════════════
 // MANAGE
-// ══════════════════════════════
 function renderManage() {
   const el = document.getElementById('page-manage');
   el.innerHTML = `
@@ -2394,9 +2368,7 @@ function renderManage() {
     </div>`;
 }
 
-// ══════════════════════════════
 // STUDENT MANAGEMENT
-// ══════════════════════════════
 function openAddStudent() {
   openModal('Add Student', `
     <div class="fgrp"><label>FULL NAME</label><input type="text" id="ns-name" placeholder="Student full name"></div>
@@ -2460,9 +2432,7 @@ function removeStudent(id) {
   });
 }
 
-// ══════════════════════════════
 // DOWNLOAD TEMPLATES
-// ══════════════════════════════
 function downloadTemplate(type) {
   let rows, filename;
   if (type === 'teacher') {
@@ -2504,9 +2474,7 @@ function downloadTemplate(type) {
   showToast('Template downloaded ✓','success');
 }
 
-// ══════════════════════════════
 // BULK PAYMENT IMPORT (Admin)
-// ══════════════════════════════
 function openBulkPaymentImport() {
   openModal('Bulk Payment Import', `
     <p style="font-size:12px;color:var(--textm);margin-bottom:14px">
@@ -2944,9 +2912,7 @@ function deleteYear(id) {
   }, 'Delete Everything', 'btn-danger');
 }
 
-// ══════════════════════════════
 // AUDIT LOG
-// ══════════════════════════════
 function renderAudit() {
   const el = document.getElementById('page-audit');
   let html = `
@@ -2978,13 +2944,9 @@ function filterAudit() {
   });
 }
 
-// ══════════════════════════════
 // SETTINGS
-// ══════════════════════════════
 
-// ══════════════════════════════════════════════
 // STUDENT PAYMENT LEDGER
-// ══════════════════════════════════════════════
 var ledgerSelectedClass = '';
 
 function renderLedger() {
@@ -3298,9 +3260,7 @@ function exportLedgerAll() {
 }
 
 
-// ════════════════════════════════════════════════════════
 // FEATURE: PRINTABLE RECEIPT
-// ════════════════════════════════════════════════════════
 function printReceipt(id) {
   var p = DB.payments.find(function(x){ return x.id===id; });
   if (!p) return;
@@ -3382,9 +3342,7 @@ function printReceipt(id) {
   else { showToast('Allow popups to print receipts','warning'); }
 }
 
-// ════════════════════════════════════════════════════════
 // FEATURE: DUPLICATE PAYMENT WARNING
-// ════════════════════════════════════════════════════════
 function checkDuplicateAndPay() {
   var student = document.getElementById('pf2-student').value || document.getElementById('stsr-input').value.trim();
   var cls = document.getElementById('pf2-class').value;
@@ -3405,9 +3363,7 @@ function checkDuplicateAndPay() {
   }
 }
 
-// ════════════════════════════════════════════════════════
 // FEATURE: TEACHER ATTENDANCE SUMMARY REPORT
-// ════════════════════════════════════════════════════════
 function renderTeacherSummaryReport() {
   var stats = getTeacherStats().sort(function(a,b){ return b.sessions-a.sessions; });
   // Use stats (already deduplicated per-teacher via getTeacherStats) for totals
@@ -3476,9 +3432,7 @@ function printTeacherSummary() {
   else { showToast('Allow popups to print','warning'); }
 }
 
-// ════════════════════════════════════════════════════════
 // FEATURE: FULL DATABASE BACKUP EXPORT
-// ════════════════════════════════════════════════════════
 function exportFullBackup() {
   showToast('Preparing backup...', 'warning');
   setTimeout(function() {
@@ -3561,9 +3515,7 @@ function exportFullBackup() {
   }, 200);
 }
 
-// ════════════════════════════════════════════════════════
 // FEATURE: OFFLINE QUEUE
-// ════════════════════════════════════════════════════════
 var offlineQueue = [];
 
 function queueWrite(table, data, method) {
@@ -3599,9 +3551,7 @@ async function flushOfflineQueue() {
   if (fail > 0) showToast(fail + ' record(s) still pending - will retry', 'warning');
 }
 
-// ════════════════════════════════════════════════════════
 // FEATURE: YEAR-FILTERED REPORTS
-// ════════════════════════════════════════════════════════
 var reportFilterYear = '';
 
 function getActiveYearFilter() {
@@ -3614,10 +3564,8 @@ function setReportYear(yr) {
 }
 
 
-// ════════════════════════════════════════════════════
 // REPAIR: Force-save all students to Supabase
 // Fixes the case where import fired too fast and Supabase only saved partial
-// ════════════════════════════════════════════════════
 async function resyncStudentsToSupabase() {
   if (DB.students.length === 0) {
     showToast('No students in memory to sync', 'error');
@@ -3708,10 +3656,7 @@ async function resyncStudentsToSupabase() {
 
 
 
-// ══════════════════════════════
 // EXCEL
-// ══════════════════════════════
-// ══════════════════════════════
 // CANONICAL ET TOTAL HELPER
 // Single source of truth for how much ET has been collected from a set of payments.
 // Rule: use actual ET allocation records if they exist for a payment.
@@ -3730,7 +3675,6 @@ function getETAmountFromPayments(payments) {
   });
   return total;
 }
-// ══════════════════════════════
 function getTeacherStats() {
   return DB.teachers.map(function(name) {
     var yrF3 = typeof reportFilterYear !== 'undefined' ? reportFilterYear : '';
@@ -3984,9 +3928,7 @@ function handleImport(evt, type) {
   reader.readAsBinaryString(file);
 }
 
-// ══════════════════════════════
 // SEARCH DROPDOWNS
-// ══════════════════════════════
 const srcs = {
   teacher: () => DB.teachers,
   class: () => DB.classes,
@@ -4093,9 +4035,7 @@ function selPeriod(el, val, ctx) {
   document.getElementById(ctx==='pay'?'pf2-period':'af2-period').value = val;
 }
 
-// ══════════════════════════════
 // TABLE FILTER
-// ══════════════════════════════
 function filterTable(q, tblId) {
   const tbl = document.getElementById(tblId);
   if (!tbl) return;
@@ -4105,9 +4045,7 @@ function filterTable(q, tblId) {
   });
 }
 
-// ══════════════════════════════
 // MODAL
-// ══════════════════════════════
 function openModal(title, body) {
   document.getElementById('mtitle-txt').textContent = title;
   document.getElementById('mbody').innerHTML = body;
@@ -4118,9 +4056,7 @@ function closeModal(e) {
   document.getElementById('moverlay').classList.remove('open');
 }
 
-// ══════════════════════════════
 // CONFIRM
-// ══════════════════════════════
 let confirmCb = null;
 function showConfirm(title, msg, cb, btnLabel='Confirm', btnClass='btn-danger') {
   document.getElementById('conf-title').textContent = title;
@@ -4134,9 +4070,7 @@ function showConfirm(title, msg, cb, btnLabel='Confirm', btnClass='btn-danger') 
 function closeConfirm() { document.getElementById('conf-overlay').classList.remove('open'); confirmCb = null; }
 document.getElementById('conf-ok-btn').addEventListener('click', () => { if (confirmCb) { confirmCb(); closeConfirm(); } });
 
-// ══════════════════════════════
 // TOAST
-// ══════════════════════════════
 let toastTimer;
 function showToast(msg, type='') {
   const t = document.getElementById('toast');
@@ -4146,9 +4080,7 @@ function showToast(msg, type='') {
   toastTimer = setTimeout(()=>t.classList.remove('show'), 2800);
 }
 
-// ══════════════════════════════
 // BACKDROP
-// ══════════════════════════════
 async function testConnection() {
   const el = document.getElementById('conn-result');
   el.style.display = 'block';
@@ -4190,9 +4122,7 @@ function buildBackdrop() {
   grid.innerHTML = html;
 }
 
-// ══════════════════════════════
 // LOGO UPLOAD
-// ══════════════════════════════
 function handleLogoUpload(event) {
   const file = event.target.files[0];
   if (!file) return;
@@ -4215,9 +4145,7 @@ function removeLogo() {
   });
 }
 
-// ══════════════════════════════
 // PERIOD MANAGEMENT
-// ══════════════════════════════
 function openAddPeriod() {
   openModal('Add Period / Session', `
     <div class="fgrp"><label>PERIOD NAME</label><input type="text" id="np-name" placeholder="e.g. Morning Session, Period 7"></div>
@@ -4250,9 +4178,7 @@ function getPeriodNames() {
   return DB.periods.map(p => typeof p==='object' ? p.name : p);
 }
 
-// ══════════════════════════════
 // SAMPLE DATA
-// ══════════════════════════════
 function loadSampleData() {
   showConfirm('Load Sample Data', 'This adds 50 attendance + 50 payment records for testing. Existing data is kept.', () => {
     const teachers = DB.teachers.slice(0, 20);
@@ -4334,9 +4260,7 @@ function loadSampleData() {
   }, 'Load Sample Data', 'btn-primary');
 }
 
-// ══════════════════════════════
 // UTILS
-// ══════════════════════════════
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
@@ -4366,9 +4290,7 @@ buildBackdrop();
 })();
 
 
-// ══════════════════════════════
 // COORDINATOR STATS & REPORTS
-// ══════════════════════════════
 function getCoordinatorStats() {
   var coords = DB.users.filter(function(u){ return u.role === 'coordinator'; });
   // Admin sees all classes
@@ -4733,13 +4655,9 @@ async function settleUnallocated(id, unalloc) {
 
 
 
-// ══════════════════════════════
 // SETTINGS
-// ══════════════════════════════
 
-// ══════════════════════════════
 // SETTINGS — full rebuild
-// ══════════════════════════════
 
 async function changePassword() {
   var oldP = (document.getElementById('cp-old')||{}).value || '';
@@ -4843,9 +4761,7 @@ function submitAddPurpose() {
 }
 
 
-// ══════════════════════════════════════════════════════
 // VIEWER ROLE — Permission system
-// ══════════════════════════════════════════════════════
 
 var VIEWER_PERMISSIONS = [
   { id:'et',         group:'Financial', label:'Extended Teaching', desc:'Who paid, amounts, full/partial/unpaid per class' },
@@ -4918,9 +4834,7 @@ function renderViewerReports() {
       .reduce(function(s,a){ return s+a.amount; }, 0);
   }
 
-  // ════════════════════════════════
   // PAYMENT REPORTS (if any payment perm)
-  // ════════════════════════════════
   if (visiblePurposes.length > 0) {
 
     // ── 1. KPI summary strip — one card per permitted purpose
@@ -5049,9 +4963,7 @@ function renderViewerReports() {
     }, 100);
   }
 
-  // ════════════════════════════════
   // ATTENDANCE & PAYROLL REPORTS
-  // ════════════════════════════════
   if (perms.includes('attendance') || perms.includes('payroll')) {
     var approved = DB.attendance.filter(function(a){ return a.approvalStatus==='approved'; });
     var allETRecs = approved.filter(function(a){ return a.attType==='extended'||a.period==='Extended Teaching'; });
@@ -5587,9 +5499,7 @@ function renderSettings() {
 
   var html = '<div class="stitle" style="margin-bottom:14px">&#9881; Settings</div>';
 
-  // ──────────────────────────────────────────
   // ADMIN-ONLY SECTIONS
-  // ──────────────────────────────────────────
   if (r === 'admin') {
 
     // School Profile
@@ -5624,7 +5534,7 @@ function renderSettings() {
       + '</div>'
       + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'
       + '<div class="fgrp"><label>PORTAL ACCESS FEE (GHS per semester)</label><input type="number" id="ss-portal-fee" min="0" value="'+(s.portalFee||10)+'"></div>'
-      + '<div class="fgrp"><label>PAYSTACK PUBLIC KEY</label><input type="text" id="ss-paystack-key" placeholder="pk_test_xxxxxxxxxx" value="'+(s.paystackPublicKey||'')+'"></div>'
+      + '<div class="fgrp"><label>PAYSTACK PUBLIC KEY</label><input type="text" id="ss-paystack-key" placeholder="Paste Paystack public key" value="'+(s.paystackPublicKey||'')+'"></div>'
       + '</div>'
       + '<div class="fgrp"><label>SCHOOL TYPE</label>'
       + '<select id="ss-stype">'
@@ -5762,6 +5672,7 @@ function renderSettings() {
               + '<div style="display:flex;gap:6px;flex-wrap:wrap">'
               + '<button class="btn btn-xs btn-outline" onclick="openManageAdmissionItems(\''+y.id+'\')">&#9998; Edit Items</button>'
               + '<button class="btn btn-xs btn-primary" onclick="openYearRollover()">&#128260; Year Rollover</button>'
+              + '<button class="btn btn-xs btn-outline" onclick="openArchives()">Archives</button>'
               + '</div>'
               : '')
             + '</div>';
@@ -5777,18 +5688,9 @@ function renderSettings() {
       + '</div>';
 
     // Sample data & danger
-    html += '<div class="card"><div class="ctitle"><span class="tic">&#9888;</span>Sample Data</div>'
-      + '<p style="font-size:12px;color:var(--textm);margin-bottom:10px">Load 50 sample attendance and payment records for testing. Clearable anytime.</p>'
-      + '<div style="display:flex;gap:8px;flex-wrap:wrap">'
-      + '<button class="btn btn-outline btn-sm" onclick="loadSampleData()">&#128229; Load Sample Data</button>'
-      + '<button class="btn btn-danger btn-sm" onclick="resetData()">&#128465; Reset Attendance &amp; Payments</button>'
-      + '<button class="btn btn-outline btn-sm" onclick="exportFullBackup()">&#128190; Full Backup Excel</button>'
-      + '</div></div>';
-  }
+      }
 
-  // ──────────────────────────────────────────
   // COORDINATOR INFO (read-only)
-  // ──────────────────────────────────────────
   if (r === 'coordinator') {
     html += '<div class="card">'
       + '<div class="ctitle"><span class="tic">&#128100;</span>My Account</div>'
@@ -5813,9 +5715,7 @@ function renderSettings() {
       + '</div>';
   }
 
-  // ──────────────────────────────────────────
   // SUPERVISOR INFO (read-only)
-  // ──────────────────────────────────────────
   if (r === 'supervisor') {
     html += '<div class="card">'
       + '<div class="ctitle"><span class="tic">&#128100;</span>My Account</div>'
@@ -5827,9 +5727,7 @@ function renderSettings() {
       + '</tbody></table></div>';
   }
 
-  // ──────────────────────────────────────────
   // VIEWER INFO
-  // ──────────────────────────────────────────
   if (r === 'viewer') {
     var myPerms2 = (currentUser.permissions||[]).map(function(p){
       var pm = VIEWER_PERMISSIONS.find(function(x){ return x.id===p; });
@@ -5850,9 +5748,7 @@ function renderSettings() {
       + '</div>';
   }
 
-  // ──────────────────────────────────────────
   // CHANGE PASSWORD (all roles)
-  // ──────────────────────────────────────────
   html += '<div class="card"><div class="ctitle"><span class="tic">&#128272;</span>Change Password</div>'
     + '<div class="fgrp"><label>CURRENT</label><input type="password" id="cp-old" autocomplete="current-password"></div>'
     + '<div class="fgrp"><label>NEW</label><input type="password" id="cp-new" autocomplete="new-password"></div>'
@@ -6091,6 +5987,7 @@ function openYearRollover() {
     + '</div>'
     + '<div class="fgrp"><label>NEW ACADEMIC YEAR NAME</label>'
     + '<input type="text" id="new-year-name" placeholder="e.g. 2025/2026" value=""></div>'
+        + '<label style="display:flex;gap:8px;align-items:center;font-size:13px;margin:10px 0"><input type="checkbox" id="rollover-archive" checked> Archive this year\'s records and clear them for the new year</label>'
     + '<button class="btn btn-danger" style="width:100%" onclick="executeYearRollover()">Execute Year Rollover</button>'
   );
 }
@@ -6100,6 +5997,9 @@ async function executeYearRollover() {
   if (!newYearName) { showToast('Enter the new year name','error'); return; }
   if (DB.years.find(function(y){ return y.name === newYearName; })) {
     showToast('Year already exists','error'); return;
+  }
+  if (document.getElementById('rollover-archive') && document.getElementById('rollover-archive').checked) {
+    if (!(await archiveAndClearYear(getActiveYear() ? getActiveYear().name : DB.settings.activeYear))) return;
   }
   showToast('Running rollover…','warning');
   var batchUpdates = [];
@@ -6131,14 +6031,259 @@ async function executeYearRollover() {
   renderDashboard();
 }
 
+
+var ARCHIVE_SOURCES = [
+  ['attendance','attendance','attendance'], ['payments','payments','payments'],
+  ['allocations','payment_allocations','allocations'], ['installments','payment_installments','installments'],
+  ['allowances','allowances','allowances'], ['scores','scores','scores'],
+  ['conduct','behaviour_records','behaviourRecords'], ['prefect_reports','prefect_reports','prefectReports'],
+  ['pta_meetings','pta_meetings','ptaMeetings'], ['pta_attendance','pta_attendance','ptaAttendance']
+];
+var _archList = [];
+function _archHdr(extra) { return Object.assign({}, HDR, extra || {}); }
+async function sbGetAll(table) {
+  var out = [], off = 0;
+  while (true) {
+    var r = await fetch(SUPA_URL + '/rest/v1/' + table + '?select=*&order=id&limit=1000&offset=' + off, { headers: HDR });
+    if (!r.ok) throw new Error('Could not read ' + table);
+    var rows = await r.json();
+    out = out.concat(rows);
+    if (rows.length < 1000) break;
+    off += 1000;
+  }
+  return out;
+}
+async function archiveAndClearYear(name) {
+  if (!currentUser || currentUser.role !== 'admin') { showToast('Only an admin can archive a year', 'error'); return false; }
+  showToast('Archiving ' + name + '. Please wait…', 'warning');
+  var data = {}, counts = {};
+  try {
+    for (var i = 0; i < ARCHIVE_SOURCES.length; i++) {
+      var src = ARCHIVE_SOURCES[i];
+      data[src[0]] = await sbGetAll(src[1]);
+      counts[src[0]] = data[src[0]].length;
+    }
+    data.students = await sbGetAll('students');
+    counts.students = data.students.length;
+    var rec = { id: uid(), year_name: name, created_by: currentUser.name || currentUser.username, counts: counts, data: data };
+    var r = await fetch(SUPA_URL + '/rest/v1/archives', { method: 'POST', headers: _archHdr({ 'Prefer': 'return=minimal' }), body: JSON.stringify(rec) });
+    if (!r.ok) throw new Error('archive could not be saved (code ' + r.status + ')');
+  } catch (e) { showToast('Archive failed. Nothing was deleted: ' + e.message, 'error'); return false; }
+  try {
+    for (var j = 0; j < ARCHIVE_SOURCES.length; j++) {
+      var d = await fetch(SUPA_URL + '/rest/v1/' + ARCHIVE_SOURCES[j][1] + '?id=not.is.null', { method: 'DELETE', headers: _archHdr({ 'Prefer': 'return=minimal' }) });
+      if (!d.ok) throw new Error(ARCHIVE_SOURCES[j][1]);
+      DB[ARCHIVE_SOURCES[j][2]] = [];
+    }
+  } catch (e) { showToast('Archive saved, but clearing stopped at ' + e.message + '. Run the rollover again.', 'error'); return false; }
+  audit('ARCHIVE_YEAR', name + ' archived and cleared', 'archives');
+  return true;
+}
+async function openArchives() {
+  if (!currentUser || currentUser.role !== 'admin') { showToast('Admins only', 'error'); return; }
+  try {
+    var r = await fetch(SUPA_URL + '/rest/v1/archives?select=id,year_name,created_at,created_by,counts&order=created_at.desc', { headers: HDR });
+    if (!r.ok) throw new Error('code ' + r.status);
+    _archList = await r.json();
+  } catch (e) { showToast('Could not load archives: ' + e.message, 'error'); return; }
+  var h = '<div style="font-size:13px;margin-bottom:10px">Past academic years kept for reference. Delete one only when you no longer need it.</div>';
+  if (!_archList.length) h += '<div style="padding:14px;color:var(--gray)">No archives yet.</div>';
+  _archList.forEach(function(a) {
+    var c = a.counts || {}, total = 0;
+    Object.keys(c).forEach(function(k) { if (k !== 'students') total += c[k]; });
+    h += '<div style="padding:10px 0;border-bottom:1px solid var(--grayb)"><strong>' + String(a.year_name).replace(/</g, '&lt;') + '</strong>'
+      + '<div style="font-size:12px;color:var(--gray)">' + new Date(a.created_at).toLocaleDateString() + ' · ' + (c.students || 0) + ' students · ' + total + ' records</div>'
+      + '<div style="margin-top:6px;display:flex;gap:6px"><button class="btn btn-xs btn-primary" onclick="downloadArchive(\'' + a.id + '\')">Download Excel</button>'
+      + '<button class="btn btn-xs btn-danger" onclick="deleteArchive(\'' + a.id + '\')">Delete</button></div></div>';
+  });
+  openModal('Archived Years', h);
+}
+async function downloadArchive(id) {
+  try {
+    var r = await fetch(SUPA_URL + '/rest/v1/archives?id=eq.' + id + '&select=year_name,data', { headers: HDR });
+    var rec = (await r.json())[0];
+    if (!rec) throw new Error('not found');
+    var wb = XLSX.utils.book_new();
+    Object.keys(rec.data).forEach(function(k) {
+      var rows = (rec.data[k] || []).map(function(row) {
+        var o = {}; Object.keys(row).forEach(function(f) { var v = row[f]; o[f] = (v !== null && typeof v === 'object') ? JSON.stringify(v) : v; }); return o;
+      });
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.length ? rows : [{}]), k.slice(0, 31));
+    });
+    XLSX.writeFile(wb, 'Archive_' + String(rec.year_name).replace(/[\/\\]/g, '-') + '.xlsx');
+  } catch (e) { showToast('Download failed: ' + e.message, 'error'); }
+}
+async function deleteArchive(id) {
+  var a = _archList.find(function(x) { return x.id === id; });
+  if (!a) return;
+  var typed = prompt('This permanently deletes the archive for ' + a.year_name + '.\nType the year name to confirm:');
+  if (typed === null) return;
+  if (typed.trim() !== a.year_name) { showToast('Name did not match. Nothing deleted.', 'warning'); return; }
+  var r = await fetch(SUPA_URL + '/rest/v1/archives?id=eq.' + id, { method: 'DELETE', headers: _archHdr({ 'Prefer': 'return=minimal' }) });
+  if (!r.ok) { showToast('Could not delete archive', 'error'); return; }
+  audit('DELETE_ARCHIVE', a.year_name, 'archives');
+  showToast('Archive deleted', 'success');
+  openArchives();
+}
+function filterPTAList() {
+  var c = (document.getElementById('ptaa-cls') || {}).value || '';
+  document.querySelectorAll('.ptaa-chk').forEach(function(cb) {
+    var row = cb.closest('label') || cb.parentElement;
+    if (row) row.style.display = (!c || cb.getAttribute('data-class') === c) ? '' : 'none';
+  });
+}
+
+
+var TT = null, TT_IDX = null, TT_FIXED = ['WSHP', 'CO-CUR', 'PLC /  VLC'];
+function _x(v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'); }
+function _mins(s) { var a = String(s).split(':'); return (+a[0]) * 60 + (+a[1]); }
+function _tName(id) { var t = TT_IDX.t[id]; return t ? (t.s || t.n) : '?'; }
+function _isFixed(s) { var sb = TT_IDX.s[s.sub]; return !sb || TT_FIXED.indexOf(sb.s) >= 0; }
+async function loadTimetable(force) {
+  if (TT && !force) return TT;
+  try {
+    var r = await fetch(SUPA_URL + '/rest/v1/timetable?id=eq.current&select=data', { headers: HDR });
+    var rows = r.ok ? await r.json() : [];
+    TT = rows[0] ? rows[0].data : null;
+  } catch (e) { TT = null; }
+  if (TT) {
+    TT_IDX = { t: {}, c: {}, s: {} };
+    TT.teachers.forEach(function(x) { TT_IDX.t[x.id] = x; });
+    TT.classes.forEach(function(x) { TT_IDX.c[x.id] = x; });
+    TT.subjects.forEach(function(x) { TT_IDX.s[x.id] = x; });
+  }
+  return TT;
+}
+async function _saveTimetable(d) {
+  var r = await fetch(SUPA_URL + '/rest/v1/timetable', { method: 'POST', headers: Object.assign({}, HDR, { 'Prefer': 'resolution=merge-duplicates,return=minimal' }), body: JSON.stringify({ id: 'current', data: d, updated_at: new Date().toISOString() }) });
+  if (!r.ok) throw new Error('could not save (code ' + r.status + '). Has 06_lessons.sql been run?');
+}
+async function importTimetable(inp) {
+  var f = inp.files[0]; if (!f) return;
+  try {
+    var d = JSON.parse(await f.text());
+    if (!d.slots || !d.teachers || !d.classes) throw new Error('this is not a timetable file');
+    await _saveTimetable(d);
+    audit('IMPORT_TIMETABLE', d.slots.length + ' lessons', 'timetable');
+    showToast('Timetable imported', 'success');
+    await loadTimetable(true); renderLessons('record');
+  } catch (e) { showToast('Import failed: ' + e.message, 'error'); }
+}
+async function assignTeacher(i, id) {
+  if (!id || currentUser.role !== 'admin') return;
+  TT.slots[i].t = [id]; delete TT.slots[i].c;
+  try { await _saveTimetable(TT); showToast('Teacher set', 'success'); } catch (e) { showToast(e.message, 'error'); }
+}
+async function renderLessons(mode) {
+  var el = document.getElementById('page-lessons'), admin = currentUser.role === 'admin';
+  mode = mode || el.getAttribute('data-mode') || 'record'; el.setAttribute('data-mode', mode);
+  var title = '<div class="stitle" style="margin-bottom:12px">Lesson Attendance</div>';
+  if (!(await loadTimetable())) {
+    el.innerHTML = title + '<div class="card" style="padding:16px">No timetable has been imported yet.' + (admin ? '<div style="margin-top:12px"><input type="file" accept=".json" onchange="importTimetable(this)"></div>' : ' Please ask the admin.') + '</div>';
+    return;
+  }
+  var bar = admin ? '<div class="fbar"><button class="btn btn-xs ' + (mode === 'record' ? 'btn-primary' : 'btn-outline') + '" onclick="renderLessons(\'record\')">Record</button>'
+    + '<button class="btn btn-xs ' + (mode === 'report' ? 'btn-primary' : 'btn-outline') + '" onclick="renderLessons(\'report\')">Report</button>'
+    + '<label class="btn btn-xs btn-outline" style="cursor:pointer">Import timetable<input type="file" accept=".json" style="display:none" onchange="importTimetable(this)"></label></div>' : '';
+  el.innerHTML = title + bar + '<div id="lsn-body">Loading…</div>';
+  if (mode === 'report' && admin) return lessonReport();
+  return lessonRecord();
+}
+async function lessonRecord(keepSel, keepDate) {
+  var admin = currentUser.role === 'admin', body = document.getElementById('lsn-body');
+  var active = {};
+  TT.slots.forEach(function(s) { if (!_isFixed(s)) s.cls.forEach(function(c) { active[c] = 1; }); });
+  var opts = TT.classes.filter(function(c) { return active[c.id]; });
+  var sel = keepSel, dt = admin ? keepDate : todayStr();
+  try { if (!sel) sel = localStorage.getItem('lsnClass') || ''; } catch (e) {}
+  if (!dt) dt = todayStr();
+  var h = '<div class="fbar"><select id="lsn-cls" onchange="try{localStorage.setItem(\'lsnClass\',this.value)}catch(e){};lessonRecord(this.value,document.getElementById(\'lsn-date\').value)"><option value="">Select class</option>'
+    + opts.map(function(c) { return '<option value="' + c.id + '"' + (c.id === sel ? ' selected' : '') + '>' + _x(c.n) + '</option>'; }).join('') + '</select>'
+    + '<input type="date" id="lsn-date" value="' + dt + '" ' + (admin ? 'max="' + todayStr() + '" onchange="lessonRecord(document.getElementById(\'lsn-cls\').value,this.value)"' : 'disabled') + '></div>';
+  var wd = new Date(dt + 'T12:00:00').getDay();
+  if (!sel) { body.innerHTML = h + '<div class="card" style="padding:14px">Choose your class to see today\'s lessons.</div>'; return; }
+  var recs = {};
+  try {
+    var r = await fetch(SUPA_URL + '/rest/v1/lesson_attendance?att_date=eq.' + dt + '&class_id=eq.' + sel + '&select=*', { headers: HDR });
+    (await r.json()).forEach(function(x) { recs[x.period + '|' + x.subject_id] = x; });
+  } catch (e) {}
+  var list = [];
+  TT.slots.forEach(function(s, i) { if (s.d === wd && s.cls.indexOf(sel) >= 0 && !_isFixed(s)) list.push([s, i]); });
+  list.sort(function(a, b) { return a[0].p - b[0].p; });
+  var now = new Date(), nm = now.getHours() * 60 + now.getMinutes(), lastTot = '';
+  try { lastTot = localStorage.getItem('lsnTot_' + sel) || ''; } catch (e) {}
+  if (!list.length) h += '<div class="card" style="padding:14px">No lessons on this day.</div>';
+  list.forEach(function(p) {
+    var s = p[0], i = p[1], pd = TT.periods.find(function(x) { return x.p === s.p; }) || {}, rec = recs[s.p + '|' + s.sub] || {};
+    var locked = !admin && pd.s && _mins(pd.s) > nm, st = rec.status || '';
+    var tn = s.t && s.t.length ? s.t.map(_tName).join(' / ') : (admin ? '<select onchange="assignTeacher(' + i + ',this.value)"><option value="">Set teacher</option>'
+      + (s.c && s.c.length ? s.c : TT.teachers.map(function(t) { return t.id; })).map(function(id) { return '<option value="' + id + '">' + _x(TT_IDX.t[id].n) + '</option>'; }).join('') + '</select>' : 'Teacher not set');
+    h += '<div class="card" style="padding:10px;margin-bottom:8px' + (locked ? ';opacity:.5' : '') + '"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><strong>P' + s.p + ' ' + _x(pd.s) + '-' + _x(pd.e) + ' · ' + _x(TT_IDX.s[s.sub].n) + '</strong><span>' + tn + '</span></div>'
+      + '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"><select id="ls-' + i + '"' + (locked ? ' disabled' : '') + '><option value="">Teacher status</option>'
+      + [['present', 'Present'], ['late', 'Late'], ['absent', 'Absent'], ['cover', 'Cover teacher'], ['no_lesson', 'No lesson held']].map(function(o) { return '<option value="' + o[0] + '"' + (st === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select>'
+      + '<input type="number" min="0" id="lm-' + i + '" placeholder="Minutes late" value="' + (rec.minutes_late || '') + '" style="width:110px"' + (locked ? ' disabled' : '') + '>'
+      + '<select id="lc-' + i + '"' + (locked ? ' disabled' : '') + '><option value="">Cover by</option>' + TT.teachers.map(function(t) { return '<option value="' + t.id + '"' + (rec.cover_teacher_id === t.id ? ' selected' : '') + '>' + _x(t.n) + '</option>'; }).join('') + '</select>'
+      + '<input type="number" min="0" id="lp-' + i + '" placeholder="Students present" value="' + (rec.students_present == null ? '' : rec.students_present) + '" style="width:130px"' + (locked ? ' disabled' : '') + '>'
+      + '<input type="number" min="0" id="lt-' + i + '" placeholder="Class size" value="' + (rec.students_total == null ? lastTot : rec.students_total) + '" style="width:100px"' + (locked ? ' disabled' : '') + '>'
+      + '<button class="btn btn-xs btn-primary"' + (locked ? ' disabled' : '') + ' onclick="saveLesson(' + i + ')">' + (rec.id ? 'Update' : 'Save') + '</button></div></div>';
+  });
+  body.innerHTML = h;
+}
+async function saveLesson(i) {
+  var s = TT.slots[i], g = function(k) { return (document.getElementById(k + '-' + i) || {}).value || ''; };
+  var sel = document.getElementById('lsn-cls').value, dt = document.getElementById('lsn-date').value, st = g('ls');
+  if (!st) { showToast('Choose the teacher status', 'warning'); return; }
+  var late = parseInt(g('lm')) || 0, pr = g('lp'), tot = g('lt');
+  if (st === 'late' && late < 1) { showToast('Enter how many minutes late', 'warning'); return; }
+  if (st === 'cover' && !g('lc')) { showToast('Choose the cover teacher', 'warning'); return; }
+  if (st !== 'no_lesson') {
+    if (pr === '' || tot === '') { showToast('Enter students present and class size', 'warning'); return; }
+    if (+pr > +tot) { showToast('Students present cannot be more than the class size', 'warning'); return; }
+  }
+  var rec = { id: dt + '_' + sel + '_' + s.p + '_' + s.sub, att_date: dt, class_id: sel, subject_id: s.sub, period: s.p, teacher_ids: s.t || [], status: st,
+    minutes_late: st === 'late' ? late : 0, cover_teacher_id: st === 'cover' ? g('lc') : null,
+    students_present: st === 'no_lesson' ? null : +pr, students_total: st === 'no_lesson' ? null : +tot, recorded_by: currentUser.name || currentUser.username };
+  try {
+    var r = await fetch(SUPA_URL + '/rest/v1/lesson_attendance', { method: 'POST', headers: Object.assign({}, HDR, { 'Prefer': 'resolution=merge-duplicates,return=minimal' }), body: JSON.stringify(rec) });
+    if (!r.ok) throw new Error('code ' + r.status);
+    try { if (tot) localStorage.setItem('lsnTot_' + sel, tot); } catch (e) {}
+    showToast('Saved', 'success');
+  } catch (e) { showToast('Could not save: ' + e.message, 'error'); }
+}
+async function lessonReport(from, to) {
+  var body = document.getElementById('lsn-body'), td = todayStr(), dd = new Date(); dd.setDate(dd.getDate() - ((dd.getDay() + 6) % 7));
+  from = from || dd.toISOString().split('T')[0]; to = to || td;
+  var recs = [];
+  try {
+    var r = await fetch(SUPA_URL + '/rest/v1/lesson_attendance?att_date=gte.' + from + '&att_date=lte.' + to + '&select=*&limit=5000', { headers: HDR });
+    recs = r.ok ? await r.json() : [];
+  } catch (e) {}
+  var T = {}, C = {}, sched = 0, d = new Date(from + 'T12:00:00'), end = new Date(to + 'T12:00:00');
+  function trow(id) { return T[id] || (T[id] = { s: 0, r: 0, present: 0, late: 0, absent: 0, cover: 0, mins: 0 }); }
+  for (; d <= end; d.setDate(d.getDate() + 1)) {
+    var w = d.getDay();
+    TT.slots.forEach(function(s) { if (s.d === w && !_isFixed(s)) { sched++; (s.t || []).forEach(function(id) { trow(id).s++; }); } });
+  }
+  recs.forEach(function(x) {
+    (x.teacher_ids || []).forEach(function(id) { var t = trow(id); t.r++; if (x.status === 'present') t.present++; else if (x.status === 'late') { t.late++; t.mins += x.minutes_late || 0; } else if (x.status === 'absent') t.absent++; else if (x.status === 'cover') t.cover++; });
+    var c = C[x.class_id] || (C[x.class_id] = { n: 0, p: 0, t: 0 }); c.n++; if (x.students_total > 0) { c.p += x.students_present || 0; c.t += x.students_total; }
+  });
+  var th = 'style="text-align:left;padding:6px;border-bottom:1px solid var(--grayb)"', tdc = 'style="padding:6px;border-bottom:1px solid var(--grayb)"';
+  var h = '<div class="fbar"><input type="date" id="lr-from" value="' + from + '"><input type="date" id="lr-to" value="' + to + '"><button class="btn btn-xs btn-primary" onclick="lessonReport(document.getElementById(\'lr-from\').value,document.getElementById(\'lr-to\').value)">Show</button></div>'
+    + '<div class="card" style="padding:12px;margin-bottom:10px"><strong>' + recs.length + '</strong> of <strong>' + sched + '</strong> scheduled lessons recorded (' + (sched ? Math.round(recs.length * 100 / sched) : 0) + '%)</div>'
+    + '<div class="card" style="padding:10px;margin-bottom:10px;overflow-x:auto"><div style="font-weight:600;margin-bottom:6px">Teachers</div><table style="width:100%;border-collapse:collapse;font-size:13px"><tr><th ' + th + '>Teacher</th><th ' + th + '>Scheduled</th><th ' + th + '>Recorded</th><th ' + th + '>Present</th><th ' + th + '>Late</th><th ' + th + '>Absent</th><th ' + th + '>Cover</th><th ' + th + '>Minutes late</th></tr>'
+    + Object.keys(T).filter(function(id) { return T[id].s || T[id].r; }).sort(function(a, b) { return T[b].absent - T[a].absent || T[b].late - T[a].late; }).map(function(id) { var t = T[id]; return '<tr><td ' + tdc + '>' + _x(TT_IDX.t[id] ? TT_IDX.t[id].n : id) + '</td><td ' + tdc + '>' + t.s + '</td><td ' + tdc + '>' + t.r + '</td><td ' + tdc + '>' + t.present + '</td><td ' + tdc + '>' + t.late + '</td><td ' + tdc + '>' + t.absent + '</td><td ' + tdc + '>' + t.cover + '</td><td ' + tdc + '>' + t.mins + '</td></tr>'; }).join('') + '</table></div>'
+    + '<div class="card" style="padding:10px;overflow-x:auto"><div style="font-weight:600;margin-bottom:6px">Student attendance by class</div><table style="width:100%;border-collapse:collapse;font-size:13px"><tr><th ' + th + '>Class</th><th ' + th + '>Lessons recorded</th><th ' + th + '>Average attendance</th></tr>'
+    + Object.keys(C).sort(function(a, b) { return (C[a].t ? C[a].p / C[a].t : 1) - (C[b].t ? C[b].p / C[b].t : 1); }).map(function(id) { var c = C[id]; return '<tr><td ' + tdc + '>' + _x(TT_IDX.c[id] ? TT_IDX.c[id].n : id) + '</td><td ' + tdc + '>' + c.n + '</td><td ' + tdc + '>' + (c.t ? Math.round(c.p * 100 / c.t) + '%' : '-') + '</td></tr>'; }).join('') + '</table></div>';
+  body.innerHTML = h;
+}
+
 function getActiveYear() {
   var ay = DB.settings.activeYear;
   return DB.years.find(function(y){ return y.name === ay; }) || DB.years[0] || null;
 }
 
-// ══════════════════════════════
 // ADMISSION MODULE
-// ══════════════════════════════
 var GH_REGIONS = ['Ahafo','Ashanti','Bono','Bono East','Central','Eastern','Greater Accra',
   'North East','Northern','Oti','Savannah','Upper East','Upper West','Volta','Western','Western North'];
 var PREFIXES = ['Prof.','Dr.','Rev.','Mr.','Mrs.','Miss'];
@@ -6406,9 +6551,7 @@ function sendAdmissionSms(phone, studentName, waLink) {
   }).catch(function(){ showToast('SMS service not available yet','warning'); });
 }
 
-// ══════════════════════════════════════════════════════
 // CORE SMS FUNCTION — all sends route through here
-// ══════════════════════════════════════════════════════
 var SMS_LOG = []; // session log
 
 function asmapSMS(payload) {
@@ -6440,9 +6583,7 @@ function getStudentBalance(studentName, className) {
   return Math.max(0, expected - paid);
 }
 
-// ══════════════════════════════════════════════════════
 // SMS PAGE RENDER
-// ══════════════════════════════════════════════════════
 function renderSMS() {
   var el = document.getElementById('page-sms');
   var parents = DB.students.filter(function(s) { return s.status === 'active' && s.parentPhone; });
@@ -6723,9 +6864,7 @@ function sendResultSms(studentId) {
 
 
 
-// ══════════════════════════════════════════════════════
 // ROLE-SCOPED DASHBOARD EXTENSIONS
-// ══════════════════════════════════════════════════════
 var _origRenderDashboard = renderDashboard;
 renderDashboard = function() {
   var r = currentUser.role;
@@ -6816,9 +6955,7 @@ function renderCriticalFriendDashboard() {
     +'<button class="btn btn-primary" onclick="showTab(\'prefect\')">Submit Observation →</button></div>';
 }
 
-// ══════════════════════════════════════════════════════
 // PHASE 4: PREFECT REPORT MODULE
-// ══════════════════════════════════════════════════════
 if (!DB.prefectReports) DB.prefectReports = [];
 
 function renderPrefectReport() {
@@ -6917,9 +7054,7 @@ async function submitPrefectReport() {
   renderPrefectReport();
 }
 
-// ══════════════════════════════════════════════════════
 // PHASE 5: ACADEMIC SCORES + WASSCE ENGINE
-// ══════════════════════════════════════════════════════
 if (!DB.scores) DB.scores = [];
 
 var GHANA_GRADES = [
@@ -7121,9 +7256,7 @@ function calcWASSCEAggregate(scores) {
   return { aggregate:agg, best6:best6 };
 }
 
-// ══════════════════════════════════════════════════════
 // PHASE 5B: REPORT CARD PDF (jsPDF)
-// ══════════════════════════════════════════════════════
 function generateReportCard(studentId) {
   var s = DB.students.find(function(x){ return x.id===studentId; });
   if (!s) { showToast('Student not found','error'); return; }
@@ -7213,9 +7346,7 @@ function generateReportCard(studentId) {
   setTimeout(function(){ win.print(); }, 500);
 }
 
-// ══════════════════════════════════════════════════════
 // PHASE 6: BEHAVIOUR / CONDUCT MODULE
-// ══════════════════════════════════════════════════════
 if (!DB.behaviourRecords) DB.behaviourRecords = [];
 
 function renderBehaviour() {
@@ -7341,9 +7472,7 @@ async function submitBehaviourRecord() {
   closeModal(); showToast('Record saved ✓','success'); renderBehaviour();
 }
 
-// ══════════════════════════════════════════════════════
 // PHASE 7: PTA MODULE
-// ══════════════════════════════════════════════════════
 if (!DB.ptaMeetings) DB.ptaMeetings = [];
 if (!DB.ptaAttendance) DB.ptaAttendance = [];
 
@@ -7506,23 +7635,17 @@ function sendPTAReminder(mode) {
 // Add report card button to student ledger
 var _origRenderLedger = window.renderLedger;
 
-// ══════════════════════════════════════════════════════
 // PHASE 8: PWA SUPPORT
-// ══════════════════════════════════════════════════════
 // Register service worker if browser supports it
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', function() {
     navigator.serviceWorker.register('/sw.js').then(function(reg) {
-      console.log('SW registered:', reg.scope);
     }).catch(function(err) {
-      console.log('SW registration skipped (dev mode):', err.message);
     });
   });
 }
 
-// ══════════════════════════════════════════════════════
 // SYNC EXTENSION — load scores/pta/behaviour from Supabase
-// ══════════════════════════════════════════════════════
 var _origSync = syncFromSupabase;
 syncFromSupabase = async function(silent) {
   var result = await _origSync(silent);
@@ -7561,9 +7684,7 @@ function openStudentReportCard(studentId) {
 
 
 
-// ══════════════════════════════════════════════════════
 // FIRST-RUN SETUP WIZARD
-// ══════════════════════════════════════════════════════
 async function runSetup() {
   var schoolName = ((document.getElementById('setup-school')||{}).value||'').trim();
   var location   = ((document.getElementById('setup-loc')||{}).value||'').trim();
@@ -7667,9 +7788,7 @@ window.addEventListener('DOMContentLoaded', function() {
   }
 });
 
-// ══════════════════════════════════════════════════════
 // GPA / CGPA SYSTEM (4.0 scale, Ghana SHS)
-// ══════════════════════════════════════════════════════
 var GPA_SCALE = {
   'A1':4.0, 'B2':3.5, 'B3':3.0,
   'C4':2.5, 'C5':2.0, 'C6':1.5,
@@ -7829,9 +7948,7 @@ generateReportCard = function(studentId) {
   setTimeout(function(){ win.print(); }, 600);
 };
 
-// ══════════════════════════════════════════════════════
 // ENHANCED EXCEL IMPORT/EXPORT — ALL MODULES
-// ══════════════════════════════════════════════════════
 
 // Extend downloadTemplate with all new types
 var _origDownloadTemplate = downloadTemplate;
@@ -8163,9 +8280,7 @@ renderScores = function() {
   }
 };
 
-// ══════════════════════════════════════════════════════
 // SYSTEM AUDIT — ADDITIONAL FEATURE PATCHES
-// ══════════════════════════════════════════════════════
 
 // 1. Add export buttons to Reports tab automatically
 var _origRenderReports = renderReports;
@@ -8273,9 +8388,7 @@ function getStudentCGPA(studentName) {
 
 
 
-// ═══════════════════════════════════════════════════════════
 // SESSION 1 COMPLETE: myshsadmissions.net EXCEL IMPORT
-// ═══════════════════════════════════════════════════════════
 
 // Column mapping from myshsadmissions.net export to ASMaP fields
 // Their export columns (0-based index from typical GES/myshsadmissions format):
@@ -8470,9 +8583,7 @@ async function supabaseUpsertStudent(s) {
   }).catch(function(){});
 }
 
-// ═══════════════════════════════════════════════════════════
 // SESSION 2: GPA / CGPA ENGINE
-// ═══════════════════════════════════════════════════════════
 var GRADE_POINTS = {A1:4.0,B2:3.5,B3:3.0,C4:2.5,C5:2.0,C6:1.5,D7:1.0,E8:0.5,F9:0.0};
 
 function gradeToPoint(grade) {
@@ -8511,9 +8622,7 @@ function gpaRemark(gpa) {
   return 'Fail';
 }
 
-// ═══════════════════════════════════════════════════════════
 // REPORT CARD — UPGRADED WITH GPA/CGPA
-// ═══════════════════════════════════════════════════════════
 // Override the existing generateReportCard to include GPA/CGPA
 function generateReportCard(studentId) {
   var s = DB.students.find(function(x){ return x.id===studentId; });
@@ -8623,9 +8732,7 @@ function generateReportCard(studentId) {
   setTimeout(function(){ win.print(); }, 600);
 }
 
-// ═══════════════════════════════════════════════════════════
 // SESSION 3: IMPORT / EXPORT EVERYWHERE
-// ═══════════════════════════════════════════════════════════
 
 // ── EXCEL EXPORT HELPERS ──────────────────────────────────
 function exportStudentsExcel() {
@@ -8837,9 +8944,7 @@ async function handleBulkScoresImport(evt) {
   reader.readAsArrayBuffer(file);
 }
 
-// ═══════════════════════════════════════════════════════════
 // SESSION 4: SYSTEM AUDIT + COMPETITIVE ADDITIONS
-// ═══════════════════════════════════════════════════════════
 
 // ── STUDENT SEARCH (global) ───────────────────────────────
 function openGlobalSearch() {
