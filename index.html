@@ -961,19 +961,19 @@ function buildNav() {
     tabs.push({id:'behaviour',icon:'⭐',label:'Conduct'});
 
   // Prefect reports
-  if (['admin','class_prefect'].includes(r)) tabs.push({id:'prefect',icon:'👁',label:'Report'});
+  if (['admin','class_prefect'].includes(r)) tabs.push({id:'prefect',icon:'👁',label:'Prefect Reports'});
 
-  if (['admin','class_prefect'].includes(r)) tabs.push({id:'lessons',icon:'🕒',label:'Lessons'});
+  if (['admin','class_prefect'].includes(r)) tabs.push({id:'lessons',icon:'🕒',label:'Lesson Log'});
 
   // PTA
   if (['admin','pta_prefect','pta_executive','coordinator'].includes(r))
     tabs.push({id:'pta',icon:'👥',label:'PTA'});
 
   // Reports
-  if (r==='admin' || (r==='viewer' && hasPerm('reports'))) tabs.push({id:'reports',icon:'📈',label:'Reports'});
+  if (r==='admin' || (r==='viewer' && hasPerm('reports'))) tabs.push({id:'reports',icon:'📈',label:'Analytics'});
 
   // Management
-  if (r==='admin') tabs.push({id:'manage',icon:'👥',label:'Manage'});
+  if (r==='admin') tabs.push({id:'manage',icon:'🗂',label:'Manage'});
   if (r==='admin') tabs.push({id:'audit',icon:'🔍',label:'Audit'});
   if (r==='viewer' && hasPerm('audit')) tabs.push({id:'audit',icon:'🔍',label:'Audit'});
   if (r==='admin') tabs.push({id:'admission',icon:'🎓',label:'Admission'});
@@ -1690,58 +1690,7 @@ function submitPay() {
   updateApprovalBadge(); renderPayments(); updateSyncTime();
 }
 
-function viewPayDetail(id) {
-  var p = DB.payments.find(function(x){ return x.id===id; });
-  if (!p) return;
-  // Deduplicate installments - group by date+amount to collapse duplicates from multiple imports
-  var allInstalls = (DB.installments||[]).filter(function(i){ return i.student===p.student && i.class===p.class; });
-  // Deduplicate: keep unique date+amount combinations
-  // Deduplicate installments - same amount by same person = keep one
-  // Sort newest first so we keep the most recent version
-  var sortedInstalls = allInstalls.slice().sort(function(a,b){ return (b.ts||0)-(a.ts||0) || (b.amount - a.amount); });
-  var seen = {};
-  var installs = sortedInstalls.filter(function(i){
-    var key = i.amount + '|' + (i.recordedByName||'');
-    if (seen[key]) return false;
-    seen[key] = true;
-    return true;
-  }).sort(function(a,b){ return (a.ts||0)-(b.ts||0); }); // re-sort oldest first for display
-  // Deduplicate/merge allocations by purpose - prevents showing same purpose twice
-  var rawAllocs = (DB.allocations||[]).filter(function(a){ return a.paymentId===id; });
-  var allocMerged = {};
-  rawAllocs.forEach(function(a){
-    allocMerged[a.purpose] = (allocMerged[a.purpose]||0) + a.amount;
-  });
-  // Cap ET at etAmt
-  if (allocMerged['Extended Teaching']) {
-    allocMerged['Extended Teaching'] = Math.min(allocMerged['Extended Teaching'], Math.min(total, etAmt));
-  }
-  var allocs = Object.keys(allocMerged).map(function(pur){ return {purpose:pur, amount:allocMerged[pur]}; });
-  var etAmt = DB.paySettings.etAmount || 500;
-  var toET = Math.min(p.rawAmount||p.amount, etAmt);
 
-  var installHtml = installs.length ? installs.map(function(i){
-    return '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--grayb);font-size:12px">'
-      + '<span>' + i.date + ' — by ' + i.recordedByName + '</span><strong>GHS ' + i.amount + '</strong></div>';
-  }).join('') : '<div style="font-size:12px;color:var(--textm)">No installment history</div>';
-
-  var allocHtml = allocs.length ? allocs.map(function(a){
-    return '<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12px">'
-      + '<span>' + a.purpose + '</span><strong style="color:var(--g2)">GHS ' + a.amount + '</strong></div>';
-  }).join('') : '<div style="font-size:12px;color:var(--gold)">Pending admin settlement</div>';
-
-  openModal('Payment Detail — ' + p.student,
-    '<div style="display:flex;gap:10px;margin-bottom:14px">'
-    + '<div class="scard" style="flex:1;border-left:4px solid var(--g2)"><div class="sval" style="font-size:18px">GHS ' + (p.rawAmount||p.amount) + '</div><div class="slbl">Total paid</div></div>'
-    + '<div class="scard gold" style="flex:1"><div class="sval" style="font-size:18px">GHS ' + toET + '</div><div class="slbl">Extended Teaching</div></div>'
-    + (p.unallocated>0 ? '<div class="scard red" style="flex:1"><div class="sval" style="font-size:18px">GHS ' + p.unallocated + '</div><div class="slbl">Unallocated</div></div>' : '')
-    + '</div>'
-    + '<div style="font-size:12px;font-weight:700;margin-bottom:6px;color:var(--textm)">PAYMENT HISTORY</div>'
-    + installHtml
-    + '<div style="font-size:12px;font-weight:700;margin:12px 0 6px;color:var(--textm)">ALLOCATION BREAKDOWN</div>'
-    + allocHtml
-  );
-}
 
 function editPay(id) {
   const p = DB.payments.find(x=>x.id===id);
@@ -2723,13 +2672,7 @@ function submitAllowance(teacher) {
   sbPost('allowances',{id:rec.id,teacher_name:teacher,allowance_type:type,amount,note,added_by:currentUser.id}).catch(()=>{});
 }
 
-function openAddPurpose() {
-  openModal('Add Payment Purpose', `
-    <div class="fgrp"><label>PURPOSE NAME</label><input type="text" id="pp-name" placeholder="e.g. SRC Levy"></div>
-    <div class="fgrp"><label>EXPECTED AMOUNT (GHS)</label><input type="number" id="pp-exp" value="0" min="0"></div>
-    <button class="btn btn-primary" onclick="submitPurpose()">Add Purpose</button>
-  `);
-}
+
 
 function submitPurpose() {
   const name = document.getElementById('pp-name').value.trim();
@@ -2741,12 +2684,7 @@ function submitPurpose() {
   saveDB(); closeModal(); showToast('Purpose added ✓','success'); renderManage();
 }
 
-function removePurpose(id) {
-  showConfirm('Remove Purpose', 'Remove this payment purpose?', () => {
-    DB.purposes = DB.purposes.filter(p=>p.id!==id);
-    saveDB(); renderManage(); showToast('Removed','error');
-  });
-}
+
 
 function updatePurposeAmt(id, val) {
   const p = DB.purposes.find(x=>x.id===id);
@@ -2886,15 +2824,7 @@ function submitAddYear() {
   saveDB(); closeModal(); showToast('Year created ✓','success'); renderManage();
 }
 
-function setActiveYear(id) {
-  DB.years.forEach(y => y.active = y.id===id);
-  const y = DB.years.find(x=>x.id===id);
-  DB.settings.activeYear = y ? y.name : '';
-  const ybEl = document.getElementById('year-badge-display');
-  if (ybEl) ybEl.textContent = DB.settings.activeYear;
-  audit('SWITCH_YEAR', y?y.name:'', 'years');
-  saveDB(); showToast('Active year changed ✓','success'); renderManage();
-}
+
 
 function archiveYear(id) {
   const y = DB.years.find(x=>x.id===id);
@@ -2904,13 +2834,7 @@ function archiveYear(id) {
   });
 }
 
-function deleteYear(id) {
-  const y = DB.years.find(x=>x.id===id);
-  showConfirm('Delete Year', `Delete ${y?y.name:'this year'} and ALL its data? This cannot be undone.`, ()=>{
-    DB.years = DB.years.filter(x=>x.id!==id);
-    saveDB(); showToast('Year deleted','error'); renderManage();
-  }, 'Delete Everything', 'btn-danger');
-}
+
 
 // AUDIT LOG
 function renderAudit() {
@@ -4123,56 +4047,16 @@ function buildBackdrop() {
 }
 
 // LOGO UPLOAD
-function handleLogoUpload(event) {
-  const file = event.target.files[0];
-  if (!file) return;
-  if (file.size > 500000) { showToast('Image too large (max 500KB)','error'); return; }
-  const reader = new FileReader();
-  reader.onload = e => {
-    DB.settings.schoolLogo = e.target.result;
-    saveDB();
-    updateLogoDisplay();
-    showToast('Logo uploaded ✓','success');
-    renderSettings();
-  };
-  reader.readAsDataURL(file);
-}
 
-function removeLogo() {
-  showConfirm('Remove Logo', 'Remove the school logo?', () => {
-    DB.settings.schoolLogo = '';
-    saveDB(); updateLogoDisplay(); showToast('Logo removed','error'); renderSettings();
-  });
-}
+
+
 
 // PERIOD MANAGEMENT
-function openAddPeriod() {
-  openModal('Add Period / Session', `
-    <div class="fgrp"><label>PERIOD NAME</label><input type="text" id="np-name" placeholder="e.g. Morning Session, Period 7"></div>
-    <div class="fgrp"><label>TIME (optional)</label><input type="text" id="np-time" placeholder="e.g. 7:30am – 8:30am"></div>
-    <button class="btn btn-primary" onclick="submitAddPeriod()">Add Period</button>
-  `);
-}
 
-function submitAddPeriod() {
-  const name = document.getElementById('np-name').value.trim();
-  const time = document.getElementById('np-time').value.trim();
-  if (!name) { showToast('Enter period name','error'); return; }
-  const existing = DB.periods.map(p => typeof p==='object'?p.name:p);
-  if (existing.includes(name)) { showToast('Already exists','warning'); return; }
-  DB.periods.push({ name, time });
-  audit('ADD_PERIOD', name, 'periods');
-  saveDB(); closeModal(); showToast('Period added ✓','success'); renderSettings();
-}
 
-function removePeriod(idx) {
-  const p = DB.periods[idx];
-  const name = typeof p==='object'?p.name:p;
-  showConfirm('Remove Period', `Remove "${name}"?`, () => {
-    DB.periods.splice(idx, 1);
-    saveDB(); renderSettings(); showToast('Period removed','error');
-  });
-}
+
+
+
 
 function getPeriodNames() {
   return DB.periods.map(p => typeof p==='object' ? p.name : p);
@@ -5575,7 +5459,7 @@ function renderSettings() {
     }).join('');
     html += '<div class="card">'
       + '<div class="ctitle"><span class="tic">&#9200;</span>Periods / Sessions'
-      + '<button class="btn btn-primary btn-sm" style="margin-left:auto" onclick="openAddPeriod()">+ Add</button></div>'
+      + '<button class="btn btn-primary btn-sm" style="margin-left:auto" onclick="openAddPeriod()">+ Add</button><button class="btn btn-xs btn-outline" onclick="loadStandardPeriods()">Load school periods</button></div>'
       + '<p style="font-size:11px;color:var(--textm);margin-bottom:8px">Define session names and times. These appear when marking attendance.</p>'
       + '<div style="font-size:11px;font-weight:700;color:var(--textm);display:flex;gap:8px;margin-bottom:4px"><span style="flex:1">#&nbsp;Period Name</span><span>Time</span><span style="width:28px"></span></div>'
       + (DB.periods||[]).map(function(p, i){
@@ -6134,7 +6018,7 @@ function filterPTAList() {
 }
 
 
-var TT = null, TT_IDX = null, TT_FIXED = ['WSHP', 'CO-CUR', 'PLC /  VLC'];
+var TT_ERR = '', TT = null, TT_IDX = null, TT_FIXED = ['WSHP', 'CO-CUR', 'PLC /  VLC'];
 function _x(v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'); }
 function _mins(s) { var a = String(s).split(':'); return (+a[0]) * 60 + (+a[1]); }
 function _tName(id) { var t = TT_IDX.t[id]; return t ? (t.s || t.n) : '?'; }
@@ -6143,6 +6027,7 @@ async function loadTimetable(force) {
   if (TT && !force) return TT;
   try {
     var r = await fetch(SUPA_URL + '/rest/v1/timetable?id=eq.current&select=data', { headers: HDR });
+    TT_ERR = r.ok ? '' : String(r.status);
     var rows = r.ok ? await r.json() : [];
     TT = rows[0] ? rows[0].data : null;
   } catch (e) { TT = null; }
@@ -6179,7 +6064,7 @@ async function renderLessons(mode) {
   mode = mode || el.getAttribute('data-mode') || 'record'; el.setAttribute('data-mode', mode);
   var title = '<div class="stitle" style="margin-bottom:12px">Lesson Attendance</div>';
   if (!(await loadTimetable())) {
-    el.innerHTML = title + '<div class="card" style="padding:16px">No timetable has been imported yet.' + (admin ? '<div style="margin-top:12px"><input type="file" accept=".json" onchange="importTimetable(this)"></div>' : ' Please ask the admin.') + '</div>';
+    el.innerHTML = title + '<div class="card" style="padding:16px">' + (TT_ERR ? 'The timetable could not be loaded (code ' + TT_ERR + '). ' + (TT_ERR === '404' ? 'Run 06_lessons.sql in Supabase first.' : 'Sign out, sign in again, and check that 06_lessons.sql was run.') : 'No timetable has been imported yet.') + (admin ? '<div style="margin-top:12px"><input type="file" accept=".json" onchange="importTimetable(this)"></div>' : ' Please ask the admin.') + '</div>';
     return;
   }
   var bar = admin ? '<div class="fbar"><button class="btn btn-xs ' + (mode === 'record' ? 'btn-primary' : 'btn-outline') + '" onclick="renderLessons(\'record\')">Record</button>'
@@ -6276,6 +6161,18 @@ async function lessonReport(from, to) {
     + '<div class="card" style="padding:10px;overflow-x:auto"><div style="font-weight:600;margin-bottom:6px">Student attendance by class</div><table style="width:100%;border-collapse:collapse;font-size:13px"><tr><th ' + th + '>Class</th><th ' + th + '>Lessons recorded</th><th ' + th + '>Average attendance</th></tr>'
     + Object.keys(C).sort(function(a, b) { return (C[a].t ? C[a].p / C[a].t : 1) - (C[b].t ? C[b].p / C[b].t : 1); }).map(function(id) { var c = C[id]; return '<tr><td ' + tdc + '>' + _x(TT_IDX.c[id] ? TT_IDX.c[id].n : id) + '</td><td ' + tdc + '>' + c.n + '</td><td ' + tdc + '>' + (c.t ? Math.round(c.p * 100 / c.t) + '%' : '-') + '</td></tr>'; }).join('') + '</table></div>';
   body.innerHTML = h;
+}
+
+
+function loadStandardPeriods() {
+  var std = [['Period 1','07:00 - 07:50'],['Period 2','07:50 - 08:40'],['Period 3','09:00 - 09:50'],['Period 4','09:50 - 10:40'],['Period 5','10:40 - 11:30'],['Period 6','11:30 - 12:20'],['Period 7','13:00 - 13:50'],['Period 8','13:50 - 14:40']];
+  var nm = function(p) { return typeof p === 'object' ? p.name : p; };
+  var have = DB.periods.map(nm);
+  var add = std.filter(function(p) { return have.indexOf(p[0]) < 0; }).map(function(p) { return { name: p[0], time: p[1] }; });
+  if (!add.length) { showToast('School periods are already set', 'success'); return; }
+  var ext = DB.periods.filter(function(p) { return /extended/i.test(nm(p)); });
+  DB.periods = DB.periods.filter(function(p) { return ext.indexOf(p) < 0; }).concat(add, ext);
+  saveDB().then(function() { audit('LOAD_PERIODS', add.length + ' periods added', 'settings'); showToast(add.length + ' periods added', 'success'); renderSettings(); });
 }
 
 function getActiveYear() {
@@ -7257,94 +7154,7 @@ function calcWASSCEAggregate(scores) {
 }
 
 // PHASE 5B: REPORT CARD PDF (jsPDF)
-function generateReportCard(studentId) {
-  var s = DB.students.find(function(x){ return x.id===studentId; });
-  if (!s) { showToast('Student not found','error'); return; }
-  var term  = currentTerm();
-  var year  = DB.settings.activeYear;
-  var studentScores = (DB.scores||[]).filter(function(sc){ return sc.student===s.name && sc.class===s.class && sc.term===term && sc.academicYear===year; });
-  var pays = DB.payments.filter(function(p){ return p.student===s.name&&p.class===s.class&&p.approvalStatus==='confirmed'; });
-  var totalPaid = pays.reduce(function(a,p){ return a+(p.rawAmount||p.amount); },0);
-  var wassce = studentScores.length ? calcWASSCEAggregate(studentScores) : null;
 
-  // Build HTML for print
-  var html = '<!DOCTYPE html><html><head><meta charset="UTF-8">'
-    +'<title>Report Card — '+s.name+'</title>'
-    +'<style>'
-    +'body{font-family:Arial,sans-serif;font-size:12px;margin:20px;color:#111}'
-    +'.header{text-align:center;border-bottom:3px solid #0a3d1f;padding-bottom:10px;margin-bottom:16px}'
-    +'.header h1{font-size:18px;color:#0a3d1f;margin:0}'
-    +'.header p{margin:2px 0;font-size:11px}'
-    +'.student-info{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:12px;font-size:11px}'
-    +'.info-row{display:flex;gap:8px}.info-label{color:#666;min-width:100px}'
-    +'.info-val{font-weight:bold}'
-    +'table{width:100%;border-collapse:collapse;margin-bottom:12px}'
-    +'th{background:#0a3d1f;color:#fff;padding:6px 8px;text-align:left;font-size:11px}'
-    +'td{padding:5px 8px;border-bottom:1px solid #ddd;font-size:11px}'
-    +'tr:nth-child(even) td{background:#f5f5f5}'
-    +'.grade-A1{color:#0a3d1f;font-weight:bold}'
-    +'.grade-fail{color:#c0392b;font-weight:bold}'
-    +'.footer{border-top:2px solid #0a3d1f;margin-top:20px;padding-top:12px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;font-size:11px}'
-    +'.sig-line{border-top:1px solid #333;margin-top:30px;padding-top:4px;text-align:center}'
-    +'@media print{body{margin:0}}'
-    +'</style></head><body>'
-    +'<div class="header">'
-    +(DB.settings.schoolLogo?'<img src="'+DB.settings.schoolLogo+'" style="height:60px;margin-bottom:8px"><br>':'')
-    +'<h1>'+DB.settings.schoolName+'</h1>'
-    +'<p>'+DB.settings.schoolLocation+'</p>'
-    +'<p style="font-size:13px;font-weight:bold;margin-top:6px">STUDENT REPORT CARD — '+term.toUpperCase()+' '+year+'</p>'
-    +'</div>'
-    +'<div class="student-info">'
-    +'<div class="info-row"><span class="info-label">Name:</span><span class="info-val">'+(s.name||'')+'</span></div>'
-    +'<div class="info-row"><span class="info-label">Class:</span><span class="info-val">'+(s.class||'')+'</span></div>'
-    +'<div class="info-row"><span class="info-label">Form:</span><span class="info-val">'+(s.form||'')+'</span></div>'
-    +'<div class="info-row"><span class="info-label">House:</span><span class="info-val">'+(s.house||'—')+'</span></div>'
-    +'<div class="info-row"><span class="info-label">Programme:</span><span class="info-val">'+(s.programme||'')+'</span></div>'
-    +'<div class="info-row"><span class="info-label">Residential:</span><span class="info-val">'+(s.residentialStatus||'')+'</span></div>'
-    +'<div class="info-row"><span class="info-label">BECE Index:</span><span class="info-val">'+(s.beceIndex||'—')+'</span></div>'
-    +'<div class="info-row"><span class="info-label">Fees Paid:</span><span class="info-val">GHS '+(totalPaid.toLocaleString()||0)+'</span></div>'
-    +'</div>';
-
-  if (studentScores.length) {
-    html += '<table><tr><th>Subject</th><th>Class Score (30%)</th><th>Exam (70%)</th><th>Total (100%)</th><th>Grade</th><th>Remarks</th></tr>'
-      +studentScores.map(function(sc){
-        var isFail = ['F9','E8'].includes(sc.grade);
-        var isPass = ['A1','B2','B3'].includes(sc.grade);
-        return '<tr><td>'+sc.subject+'</td>'
-          +'<td style="text-align:center">'+sc.classScore+'</td>'
-          +'<td style="text-align:center">'+sc.examScore+'</td>'
-          +'<td style="text-align:center"><strong>'+sc.total+'</strong></td>'
-          +'<td style="text-align:center" class="'+(isPass?'grade-A1':isFail?'grade-fail':'')+'"><strong>'+sc.grade+'</strong></td>'
-          +'<td>'+(isFail?'Needs improvement':isPass?'Excellent':'Average')+'</td></tr>';
-      }).join('')+'</table>';
-
-    if (wassce) {
-      html += '<div style="background:#e8f5ee;border-radius:6px;padding:10px;margin-bottom:12px;font-size:11px">'
-        +'<strong>WASSCE Aggregate (Best 6):</strong> '+wassce.aggregate
-        +' &nbsp;|&nbsp; Best 6 subjects: '+wassce.best6.map(function(s){ return s.subject+' ('+s.grade+')'; }).join(', ')
-        +'</div>';
-    }
-  } else {
-    html += '<p style="text-align:center;color:#666;padding:20px">No scores entered for this term yet.</p>';
-  }
-
-  html += '<div class="footer">'
-    +'<div><div class="sig-line">Class Teacher</div></div>'
-    +'<div><div class="sig-line">Head Master/Mistress</div></div>'
-    +'<div><div class="sig-line">Date</div></div>'
-    +'</div>'
-    +'<div style="text-align:center;font-size:10px;color:#666;margin-top:16px">'
-    +'Generated by ASMaP — Adombra School Management Platform · '+new Date().toLocaleDateString()
-    +'</div>'
-    +'</body></html>';
-
-  // Open in new window for printing
-  var win = window.open('', '_blank');
-  win.document.write(html);
-  win.document.close();
-  win.focus();
-  setTimeout(function(){ win.print(); }, 500);
-}
 
 // PHASE 6: BEHAVIOUR / CONDUCT MODULE
 if (!DB.behaviourRecords) DB.behaviourRecords = [];
@@ -7805,18 +7615,7 @@ function calcTermGPA(scores) {
   return Math.round((sum / valid.length) * 100) / 100;
 }
 
-function calcCGPA(allTermScores) {
-  // allTermScores = array of arrays of {grade}
-  var allGradePoints = [];
-  allTermScores.forEach(function(termScores){
-    termScores.forEach(function(s){
-      if (s.grade && GPA_SCALE[s.grade] !== undefined) allGradePoints.push(gradeToGPA(s.grade));
-    });
-  });
-  if (!allGradePoints.length) return null;
-  var sum = allGradePoints.reduce(function(a,b){ return a+b; }, 0);
-  return Math.round((sum / allGradePoints.length) * 100) / 100;
-}
+
 
 function gpaToClass(gpa) {
   if (gpa === null) return '—';
