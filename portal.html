@@ -187,6 +187,10 @@ tr:last-child td{border-bottom:none;}
 const SUPA_URL='https://wwcvvnscekpdrtadqgjs.supabase.co';
 const SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind3Y3Z2bnNjZWtwZHJ0YWRxZ2pzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2OTM1MjgsImV4cCI6MjA4OTI2OTUyOH0.EoZiOyBYzHz9Dh7A-iZW1Kzaa7dM8JJO9EuGtYAMnVk';
 const HDR={'Content-Type':'application/json','apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY};
+async function pcall(body){
+  var r=await fetch(SUPA_URL+'/functions/v1/portal-data',{method:'POST',headers:HDR,body:JSON.stringify(body)});
+  return await r.json();
+}
 
 var STUDENT=null, FEE=10, PS_KEY='';
 
@@ -198,9 +202,8 @@ function logout(){STUDENT=null;document.getElementById('bece-inp').value='';docu
 
 async function loadCfg(){
   try{
-    var r=await fetch(SUPA_URL+'/rest/v1/app_config?key=eq.main&select=settings',{headers:HDR});
-    var d=await r.json();
-    if(d&&d[0]&&d[0].settings){FEE=parseFloat(d[0].settings.portalFee||10);PS_KEY=d[0].settings.paystackPublicKey||'';}
+    var d=await pcall({action:'config'});
+    FEE=parseFloat(d.portalFee||10);PS_KEY=d.paystackPublicKey||'';
   }catch(e){}
 }
 
@@ -212,8 +215,9 @@ async function lookupStudent(){
   var btn=document.getElementById('btn-lookup');
   btn.textContent='Searching…';btn.disabled=true;
   try{
-    var r=await fetch(SUPA_URL+'/rest/v1/students?bece_index=eq.'+encodeURIComponent(bece)+'&select=*',{headers:HDR});
-    var d=await r.json();
+    var d=await pcall({action:'lookup',bece:bece});
+    if(d.error==='rate'){showErr('e-lookup','Too many attempts. Please wait a few minutes and try again.');return;}
+    d=d.student?[d.student]:[];
     if(!d||!d.length){showErr('e-lookup','No student found with that BECE Index Number.\nCheck the number or contact the school office: 0247595408');return;}
     STUDENT=d[0];buildPayScreen(STUDENT);goScreen('s-pay');
   }catch(e){showErr('e-lookup','Connection error. Check your internet and try again.');}
@@ -290,29 +294,30 @@ async function checkPin(){
   if(pin.length<6){showErr('e-pin','Enter your full PIN');return;}
   var btn=document.getElementById('btn-pin');btn.textContent='Checking…';btn.disabled=true;
   try{
-    var r=await fetch(SUPA_URL+'/rest/v1/students?portal_pin=eq.'+pin+'&portal_unlocked=eq.true&select=*',{headers:HDR});
-    var d=await r.json();
+    var res=await pcall({action:'report',pin:pin});
+    if(res.error==='rate'){showErr('e-pin','Too many attempts. Please wait a few minutes and try again.');return;}
+    var d=res.student?[res.student]:[];
     if(!d||!d.length){showErr('e-pin','PIN not found or not activated.\nIf you just paid, wait a moment and retry.\nSchool office: 0247595408');return;}
     var s=d[0];
     var uk='portal_'+pin+'_'+sem();
     var uses=parseInt(localStorage.getItem(uk)||'0');
     if(uses>=2){showErr('e-pin','PIN limit reached (2 views) for this semester.\nPay for new access or contact school: 0247595408');return;}
     localStorage.setItem(uk,String(uses+1));
-    await showReport(s,uses+1);
+    await showReport(s,uses+1,res);
   }catch(e){showErr('e-pin','Connection error. Check internet and try again.');}
   finally{btn.textContent='View Report →';btn.disabled=false;}
 }
 
 // SCREEN 4
-async function showReport(s,viewNum){
+async function showReport(s,viewNum,extra){
   goScreen('s-report');
   document.getElementById('rpt-name').textContent=s.full_name||'Report';
   document.getElementById('rpt-class').textContent=(s.class_name||'')+(s.form?' · '+s.form:'');
   document.getElementById('rpt-content').innerHTML='<div class="loader"><div class="spin"></div><div>Loading report…</div></div>';
 
   var pays=[],ptaAtt=0,ptaTotal=0;
-  try{var pr=await fetch(SUPA_URL+'/rest/v1/payments?student_name=eq.'+encodeURIComponent(s.full_name)+'&class_name=eq.'+encodeURIComponent(s.class_name||'')+'&approval_status=eq.confirmed&order=date.desc&select=*',{headers:HDR});pays=await pr.json()||[];}catch(e){}
-  try{var par=await fetch(SUPA_URL+'/rest/v1/pta_attendance?student_id=eq.'+s.id+'&select=*',{headers:HDR});var pd=await par.json()||[];if(Array.isArray(pd)){ptaTotal=pd.length;ptaAtt=pd.filter(function(x){return x.parent_attended;}).length;}}catch(e){}
+  pays=(extra&&extra.payments)||[];
+  if(extra&&extra.pta){ptaTotal=extra.pta.total;ptaAtt=extra.pta.attended;}
 
   var paid=pays.reduce(function(a,p){return a+parseFloat(p.raw_amount||p.amount||0);},0);
   var usesLeft=Math.max(0,2-viewNum);

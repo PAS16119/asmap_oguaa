@@ -320,7 +320,7 @@ tr:hover td{background:#f9fafb;}
       <input type="password" id="lp" placeholder="Enter password" autocomplete="current-password">
     </div>
     <button class="btn btn-primary" onclick="doLogin()">Sign In →</button>
-    <p style="text-align:center;font-size:11px;color:var(--textm);margin-top:14px;">Adombra School Management &amp; Analytics Platform · v1.0 · build 22Oct-b</p>
+    <p style="text-align:center;font-size:11px;color:var(--textm);margin-top:14px;">Adombra School Management &amp; Analytics Platform · v1.0 · build 23Oct-b</p>
     <button onclick="testConnection()" style="width:100%;margin-top:8px;padding:8px;background:none;border:1px dashed #ccc;border-radius:8px;font-size:11px;color:#999;cursor:pointer;">🔌 Test Database Connection</button>
     <div id="conn-result" style="margin-top:8px;font-size:12px;text-align:center;display:none"></div>
     <div style="text-align:center;margin-top:10px;font-size:11px;color:#aaa">New school? <button onclick="showScreen('setup-screen')" style="background:none;border:none;color:var(--g3);cursor:pointer;font-size:11px;font-weight:600">First-time Setup →</button></div>
@@ -963,7 +963,7 @@ function buildNav() {
   // Prefect reports
   if (['admin','class_prefect'].includes(r)) tabs.push({id:'prefect',icon:'👁',label:'Prefect Reports'});
 
-  if (['admin','class_prefect'].includes(r)) tabs.push({id:'lessons',icon:'🕒',label:'Lesson Log'});
+  if (['admin','class_prefect'].includes(r) || hasPerm('lesson_log')) tabs.push({id:'lessons',icon:'🕒',label:'Lesson Log'});
 
   // PTA
   if (['admin','pta_prefect','pta_executive','coordinator'].includes(r))
@@ -6073,9 +6073,16 @@ async function renderLessons(mode) {
   }
   var bar = admin ? '<div class="fbar"><button class="btn btn-xs ' + (mode === 'record' ? 'btn-primary' : 'btn-outline') + '" onclick="renderLessons(\'record\')">Record</button>'
     + '<button class="btn btn-xs ' + (mode === 'report' ? 'btn-primary' : 'btn-outline') + '" onclick="renderLessons(\'report\')">Report</button>'
+    + '<button class="btn btn-xs ' + (mode === 'month' ? 'btn-primary' : 'btn-outline') + '" onclick="renderLessons(\'month\')">Teacher of the Month</button>'
+    + '<button class="btn btn-xs ' + (mode === 'access' ? 'btn-primary' : 'btn-outline') + '" onclick="renderLessons(\'access\')">Who can record</button>'
+    + '<button class="btn btn-xs ' + (mode === 'ext' ? 'btn-primary' : 'btn-outline') + '" onclick="renderLessons(\'ext\')">Extended check</button>'
+    + '<button class="btn btn-xs btn-outline" onclick="syncTeachersFromTT()">Sync teachers</button>'
     + '<label class="btn btn-xs btn-outline" style="cursor:pointer">Import timetable<input type="file" accept=".json" style="display:none" onchange="importTimetable(this)"></label></div>' : '';
   el.innerHTML = title + bar + '<div id="lsn-body">Loading…</div>';
   if (mode === 'report' && admin) return lessonReport();
+  if (mode === 'month' && admin) return lessonMonth();
+  if (mode === 'access' && admin) return lessonAccess();
+  if (mode === 'ext' && admin) return lessonExt();
   return lessonRecord();
 }
 async function lessonRecord(keepSel, keepDate) {
@@ -6110,7 +6117,7 @@ async function lessonRecord(keepSel, keepDate) {
     h += '<div class="card" style="padding:10px;margin-bottom:8px' + (locked ? ';opacity:.5' : '') + '"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><strong>P' + s.p + ' ' + _x(pd.s) + '-' + _x(pd.e) + ' · ' + _x(TT_IDX.s[s.sub].n) + '</strong><span>' + tn + '</span></div>'
       + '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"><select id="ls-' + i + '"' + (locked ? ' disabled' : '') + '><option value="">Teacher status</option>'
       + [['present', 'Present'], ['late', 'Late'], ['absent', 'Absent'], ['cover', 'Cover teacher'], ['no_lesson', 'No lesson held']].map(function(o) { return '<option value="' + o[0] + '"' + (st === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select>'
-      + '<input type="number" min="0" id="lm-' + i + '" placeholder="Minutes late" value="' + (rec.minutes_late || '') + '" style="width:110px"' + (locked ? ' disabled' : '') + '>'
+      + _actSel(i, rec, locked) + '<input type="number" min="0" id="lm-' + i + '" placeholder="Minutes late" value="' + (rec.minutes_late || '') + '" style="width:110px"' + (locked ? ' disabled' : '') + '>'
       + '<select id="lc-' + i + '"' + (locked ? ' disabled' : '') + '><option value="">Cover by</option>' + TT.teachers.map(function(t) { return '<option value="' + t.id + '"' + (rec.cover_teacher_id === t.id ? ' selected' : '') + '>' + _x(t.n) + '</option>'; }).join('') + '</select>'
       + '<input type="number" min="0" id="lp-' + i + '" placeholder="Students present" value="' + (rec.students_present == null ? '' : rec.students_present) + '" style="width:130px"' + (locked ? ' disabled' : '') + '>'
       + '<input type="number" min="0" id="lt-' + i + '" placeholder="Class size" value="' + (rec.students_total == null ? lastTot : rec.students_total) + '" style="width:100px"' + (locked ? ' disabled' : '') + '>'
@@ -6122,7 +6129,8 @@ async function saveLesson(i) {
   var s = TT.slots[i], g = function(k) { return (document.getElementById(k + '-' + i) || {}).value || ''; };
   var sel = document.getElementById('lsn-cls').value, dt = document.getElementById('lsn-date').value, st = g('ls');
   if (!st) { showToast('Choose the teacher status', 'warning'); return; }
-  var late = parseInt(g('lm')) || 0, pr = g('lp'), tot = g('lt');
+  var late = parseInt(g('lm')) || 0, pr = g('lp'), tot = g('lt'), act = g('la') || 'taught', ax = g('lx');
+  if (st !== 'absent' && st !== 'no_lesson' && act === 'assessment' && !ax) { showToast('Choose the assessment type', 'warning'); return; }
   if (st === 'late' && late < 1) { showToast('Enter how many minutes late', 'warning'); return; }
   if (st === 'cover' && !g('lc')) { showToast('Choose the cover teacher', 'warning'); return; }
   if (st !== 'no_lesson') {
@@ -6130,6 +6138,7 @@ async function saveLesson(i) {
     if (+pr > +tot) { showToast('Students present cannot be more than the class size', 'warning'); return; }
   }
   var rec = { id: dt + '_' + sel + '_' + s.p + '_' + s.sub, att_date: dt, class_id: sel, subject_id: s.sub, period: s.p, teacher_ids: s.t || [], status: st,
+    activity: (st === 'absent' || st === 'no_lesson') ? 'other' : act, assess_type: (act === 'assessment' && st !== 'absent' && st !== 'no_lesson') ? ax : '',
     minutes_late: st === 'late' ? late : 0, cover_teacher_id: st === 'cover' ? g('lc') : null,
     students_present: st === 'no_lesson' ? null : +pr, students_total: st === 'no_lesson' ? null : +tot, recorded_by: currentUser.name || currentUser.username };
   try {
@@ -6148,25 +6157,153 @@ async function lessonReport(from, to) {
     recs = r.ok ? await r.json() : [];
   } catch (e) {}
   var T = {}, C = {}, sched = 0, d = new Date(from + 'T12:00:00'), end = new Date(to + 'T12:00:00');
-  function trow(id) { return T[id] || (T[id] = { s: 0, r: 0, present: 0, late: 0, absent: 0, cover: 0, mins: 0 }); }
+  function trow(id) { return T[id] || (T[id] = { s: 0, r: 0, present: 0, late: 0, absent: 0, cover: 0, mins: 0, assess: 0, attOnly: 0 }); }
   for (; d <= end; d.setDate(d.getDate() + 1)) {
     var w = d.getDay();
     TT.slots.forEach(function(s) { if (s.d === w && !_isFixed(s)) { sched++; (s.t || []).forEach(function(id) { trow(id).s++; }); } });
   }
   recs.forEach(function(x) {
-    (x.teacher_ids || []).forEach(function(id) { var t = trow(id); t.r++; if (x.status === 'present') t.present++; else if (x.status === 'late') { t.late++; t.mins += x.minutes_late || 0; } else if (x.status === 'absent') t.absent++; else if (x.status === 'cover') t.cover++; });
+    (x.teacher_ids || []).forEach(function(id) { var t = trow(id); t.r++; if (x.activity === 'assessment') t.assess++; else if (x.activity === 'attendance_only') t.attOnly++; if (x.status === 'present') t.present++; else if (x.status === 'late') { t.late++; t.mins += x.minutes_late || 0; } else if (x.status === 'absent') t.absent++; else if (x.status === 'cover') t.cover++; });
     var c = C[x.class_id] || (C[x.class_id] = { n: 0, p: 0, t: 0 }); c.n++; if (x.students_total > 0) { c.p += x.students_present || 0; c.t += x.students_total; }
   });
   var th = 'style="text-align:left;padding:6px;border-bottom:1px solid var(--grayb)"', tdc = 'style="padding:6px;border-bottom:1px solid var(--grayb)"';
   var h = '<div class="fbar"><input type="date" id="lr-from" value="' + from + '"><input type="date" id="lr-to" value="' + to + '"><button class="btn btn-xs btn-primary" onclick="lessonReport(document.getElementById(\'lr-from\').value,document.getElementById(\'lr-to\').value)">Show</button></div>'
     + '<div class="card" style="padding:12px;margin-bottom:10px"><strong>' + recs.length + '</strong> of <strong>' + sched + '</strong> scheduled lessons recorded (' + (sched ? Math.round(recs.length * 100 / sched) : 0) + '%)</div>'
-    + '<div class="card" style="padding:10px;margin-bottom:10px;overflow-x:auto"><div style="font-weight:600;margin-bottom:6px">Teachers</div><table style="width:100%;border-collapse:collapse;font-size:13px"><tr><th ' + th + '>Teacher</th><th ' + th + '>Scheduled</th><th ' + th + '>Recorded</th><th ' + th + '>Present</th><th ' + th + '>Late</th><th ' + th + '>Absent</th><th ' + th + '>Cover</th><th ' + th + '>Minutes late</th></tr>'
-    + Object.keys(T).filter(function(id) { return T[id].s || T[id].r; }).sort(function(a, b) { return T[b].absent - T[a].absent || T[b].late - T[a].late; }).map(function(id) { var t = T[id]; return '<tr><td ' + tdc + '>' + _x(TT_IDX.t[id] ? TT_IDX.t[id].n : id) + '</td><td ' + tdc + '>' + t.s + '</td><td ' + tdc + '>' + t.r + '</td><td ' + tdc + '>' + t.present + '</td><td ' + tdc + '>' + t.late + '</td><td ' + tdc + '>' + t.absent + '</td><td ' + tdc + '>' + t.cover + '</td><td ' + tdc + '>' + t.mins + '</td></tr>'; }).join('') + '</table></div>'
+    + '<div class="card" style="padding:10px;margin-bottom:10px;overflow-x:auto"><div style="font-weight:600;margin-bottom:6px">Teachers</div><table style="width:100%;border-collapse:collapse;font-size:13px"><tr><th ' + th + '>Teacher</th><th ' + th + '>Scheduled</th><th ' + th + '>Recorded</th><th ' + th + '>Present</th><th ' + th + '>Late</th><th ' + th + '>Absent</th><th ' + th + '>Cover</th><th ' + th + '>Minutes late</th><th ' + th + '>Assessments</th><th ' + th + '>Attendance only</th></tr>'
+    + Object.keys(T).filter(function(id) { return T[id].s || T[id].r; }).sort(function(a, b) { return T[b].absent - T[a].absent || T[b].late - T[a].late; }).map(function(id) { var t = T[id]; return '<tr><td ' + tdc + '>' + _x(TT_IDX.t[id] ? TT_IDX.t[id].n : id) + '</td><td ' + tdc + '>' + t.s + '</td><td ' + tdc + '>' + t.r + '</td><td ' + tdc + '>' + t.present + '</td><td ' + tdc + '>' + t.late + '</td><td ' + tdc + '>' + t.absent + '</td><td ' + tdc + '>' + t.cover + '</td><td ' + tdc + '>' + t.mins + '</td><td ' + tdc + '>' + t.assess + '</td><td ' + tdc + '>' + t.attOnly + '</td></tr>'; }).join('') + '</table></div>'
     + '<div class="card" style="padding:10px;overflow-x:auto"><div style="font-weight:600;margin-bottom:6px">Student attendance by class</div><table style="width:100%;border-collapse:collapse;font-size:13px"><tr><th ' + th + '>Class</th><th ' + th + '>Lessons recorded</th><th ' + th + '>Average attendance</th></tr>'
     + Object.keys(C).sort(function(a, b) { return (C[a].t ? C[a].p / C[a].t : 1) - (C[b].t ? C[b].p / C[b].t : 1); }).map(function(id) { var c = C[id]; return '<tr><td ' + tdc + '>' + _x(TT_IDX.c[id] ? TT_IDX.c[id].n : id) + '</td><td ' + tdc + '>' + c.n + '</td><td ' + tdc + '>' + (c.t ? Math.round(c.p * 100 / c.t) + '%' : '-') + '</td></tr>'; }).join('') + '</table></div>';
   body.innerHTML = h;
 }
 
+
+
+var TOTM = { minLessons: 8, assessTarget: 4, wAtt: 50, wDel: 20, wAss: 15, wExt: 15 };
+function _actSel(i, rec, locked) {
+  var dis = locked ? ' disabled' : '';
+  var o = function(list, cur) { return list.map(function(a) { return '<option value="' + a[0] + '"' + (cur === a[0] ? ' selected' : '') + '>' + a[1] + '</option>'; }).join(''); };
+  return '<select id="la-' + i + '"' + dis + '>' + o([['taught', 'Taught'], ['assessment', 'Assessment'], ['attendance_only', 'Attendance only'], ['revision', 'Revision'], ['other', 'Other']], rec.activity || 'taught') + '</select>'
+    + '<select id="lx-' + i + '"' + dis + '><option value="">Assessment type</option>' + o(['Quiz', 'Class test', 'Exercise', 'Assignment', 'Project', 'Exam'].map(function(a) { return [a, a]; }), rec.assess_type || '') + '</select>';
+}
+function lessonAccess() {
+  var body = document.getElementById('lsn-body');
+  var list = DB.users.filter(function(u) { return u.role !== 'admin' && u.role !== 'class_prefect'; });
+  body.innerHTML = '<div class="card" style="padding:12px"><div style="font-size:13px;margin-bottom:8px">Class prefects can always record lessons. Tick anyone else who may record the Lesson Log, such as HODs, assistant heads or supervisors.</div>'
+    + list.map(function(u) {
+      return '<label style="display:flex;gap:8px;padding:6px 0;border-bottom:1px solid var(--grayb)"><input type="checkbox" ' + ((u.permissions || []).indexOf('lesson_log') >= 0 ? 'checked' : '') + ' onchange="setLessonAccess(\'' + u.id + '\',this.checked)"><span>' + _x(u.name) + ' <small>(' + _x(u.role) + ')</small></span></label>';
+    }).join('') + '</div>';
+}
+async function setLessonAccess(id, on) {
+  var u = DB.users.find(function(x) { return x.id === id; }); if (!u) return;
+  var perms = (u.permissions || []).filter(function(p) { return p !== 'lesson_log'; }); if (on) perms.push('lesson_log');
+  try {
+    await callAdminUsers('update_user', { legacy_id: id, full_name: u.name, username: u.username, role: u.role, assigned_classes: u.classes || [], permissions: perms });
+    u.permissions = perms; showToast('Saved', 'success');
+  } catch (e) { showToast('Could not save: ' + e.message, 'error'); lessonAccess(); }
+}
+async function lessonMonth(ym) {
+  var body = document.getElementById('lsn-body'); ym = ym || todayStr().slice(0, 7);
+  var last = new Date(+ym.slice(0, 4), +ym.slice(5, 7), 0).getDate(), from = ym + '-01', to = ym + '-' + String(last).padStart(2, '0'), recs = [];
+  try {
+    var r = await fetch(SUPA_URL + '/rest/v1/lesson_attendance?att_date=gte.' + from + '&att_date=lte.' + to + '&select=*&limit=10000', { headers: HDR });
+    recs = r.ok ? await r.json() : [];
+  } catch (e) {}
+  var S = {}, byName = {};
+  TT.teachers.forEach(function(t) { byName[String(t.n).trim().toUpperCase()] = t.id; });
+  function row(id) { return S[id] || (S[id] = { n: 0, pres: 0, late: 0, held: 0, del: 0, ass: 0, eN: 0, eOk: 0 }); }
+  recs.forEach(function(x) {
+    if (x.status === 'no_lesson' || x.status === 'cover') return;
+    (x.teacher_ids || []).forEach(function(id) {
+      var t = row(id); t.n++;
+      if (x.status === 'present') t.pres++; else if (x.status === 'late') t.late++;
+      if (x.status !== 'absent') { t.held++; if (x.activity !== 'attendance_only') t.del++; if (x.activity === 'assessment') t.ass++; }
+    });
+  });
+  DB.attendance.forEach(function(a) {
+    if (a.attType === 'normal' || String(a.date).slice(0, 7) !== ym || a.approvalStatus === 'rejected') return;
+    var id = byName[String(a.teacher || '').trim().toUpperCase()]; if (!id) return;
+    var t = row(id); t.eN++; if (a.status === 'on-time') t.eOk++;
+  });
+  var W = TOTM, list = Object.keys(S).map(function(id) {
+    var t = S[id], A = t.n ? (t.pres + 0.5 * t.late) / t.n : 0, D = t.held ? t.del / t.held : 0, As = Math.min(t.ass / W.assessTarget, 1), E = t.eN ? t.eOk / t.eN : null;
+    var score = E === null ? (W.wAtt * A + W.wDel * D + W.wAss * As) / (W.wAtt + W.wDel + W.wAss) * 100 : W.wAtt * A + W.wDel * D + W.wAss * As + W.wExt * E;
+    return { id: id, name: TT_IDX.t[id] ? TT_IDX.t[id].n : id, n: t.n, A: A, D: D, ass: t.ass, E: E, score: score, ok: t.n >= W.minLessons };
+  }).sort(function(a, b) { return (b.ok - a.ok) || (b.score - a.score); });
+  var th = 'style="text-align:left;padding:6px;border-bottom:1px solid var(--grayb)"', td = 'style="padding:6px;border-bottom:1px solid var(--grayb)"', pc = function(v) { return v === null ? '-' : Math.round(v * 100) + '%'; };
+  window._tomRows = list;
+  body.innerHTML = '<div class="fbar"><input type="month" id="tom-m" value="' + ym + '" onchange="lessonMonth(this.value)"><button class="btn btn-xs btn-outline" onclick="downloadTOM(\'' + ym + '\')">Download Excel</button></div>'
+    + '<div class="card" style="padding:10px;margin-bottom:10px;font-size:12px">Score = attendance ' + W.wAtt + ', delivery (not attendance-only) ' + W.wDel + ', assessments (target ' + W.assessTarget + ') ' + W.wAss + ', extended teaching punctuality ' + W.wExt + '. A teacher needs at least ' + W.minLessons + ' recorded lessons to qualify. Scores rely on the prefects\' records.</div>'
+    + '<div class="card" style="padding:10px;overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><tr><th ' + th + '>#</th><th ' + th + '>Teacher</th><th ' + th + '>Lessons</th><th ' + th + '>Attendance</th><th ' + th + '>Delivery</th><th ' + th + '>Assessments</th><th ' + th + '>Extended</th><th ' + th + '>Score</th></tr>'
+    + list.map(function(t, i) {
+      return '<tr' + (t.ok && i < 3 ? ' style="background:rgba(212,160,23,.12)"' : '') + '><td ' + td + '>' + (t.ok ? i + 1 : '') + '</td><td ' + td + '>' + _x(t.name) + (t.ok ? '' : ' <small>(too few lessons)</small>') + '</td><td ' + td + '>' + t.n + '</td><td ' + td + '>' + pc(t.A) + '</td><td ' + td + '>' + pc(t.D) + '</td><td ' + td + '>' + t.ass + '</td><td ' + td + '>' + pc(t.E) + '</td><td ' + td + '><strong>' + t.score.toFixed(1) + '</strong></td></tr>';
+    }).join('') + '</table></div>';
+}
+function downloadTOM(ym) {
+  var rows = (window._tomRows || []).map(function(t, i) { return { Rank: t.ok ? i + 1 : '', Teacher: t.name, Lessons: t.n, 'Attendance %': Math.round(t.A * 100), 'Delivery %': Math.round(t.D * 100), Assessments: t.ass, 'Extended %': t.E === null ? '' : Math.round(t.E * 100), Score: +t.score.toFixed(1) }; });
+  var wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Teacher of the Month'); XLSX.writeFile(wb, 'Teacher_of_the_Month_' + ym + '.xlsx');
+}
+
+
+function syncTeachersFromTT() {
+  var used = {}, added = 0;
+  TT.slots.forEach(function(s) { (s.t || []).forEach(function(id) { used[id] = 1; }); });
+  TT.teachers.forEach(function(t) { var up = String(t.n).trim().toUpperCase(); if (used[t.id] && up && DB.teachers.indexOf(up) < 0) { DB.teachers.push(up); added++; } });
+  if (!added) { showToast('Teacher list already matches the timetable', 'success'); return; }
+  saveDB().then(function() { audit('SYNC_TEACHERS', added + ' teachers added from timetable', 'settings'); showToast(added + ' teachers added', 'success'); });
+}
+var _extRows = [], _extRange = [];
+async function lessonExt(from, to) {
+  var body = document.getElementById('lsn-body'), td = todayStr();
+  from = from || td.slice(0, 8) + '01'; to = to || td; _extRange = [from, to];
+  var recs = [], dec = {};
+  try {
+    var r = await fetch(SUPA_URL + '/rest/v1/lesson_attendance?period=eq.9&att_date=gte.' + from + '&att_date=lte.' + to + '&select=*&limit=5000', { headers: HDR });
+    recs = r.ok ? await r.json() : [];
+    var d = await fetch(SUPA_URL + '/rest/v1/ext_decisions?select=*&limit=5000', { headers: HDR });
+    (d.ok ? await d.json() : []).forEach(function(x) { dec[x.id] = x; });
+  } catch (e) {}
+  var norm = function(n) { return String(n || '').trim().replace(/\s+/g, ' ').toUpperCase(); }, map = { present: 'on-time', late: 'late', absent: 'absent' }, P = {}, M = {};
+  recs.forEach(function(x) {
+    if (!map[x.status]) return;
+    (x.teacher_ids || []).forEach(function(id) { var k = x.att_date + '|' + norm(TT_IDX.t[id] && TT_IDX.t[id].n); (P[k] = P[k] || { st: [], by: x.recorded_by }).st.push(map[x.status]); });
+  });
+  DB.attendance.forEach(function(a) {
+    if (a.attType === 'normal' || a.date < from || a.date > to) return;
+    var k = a.date + '|' + norm(a.teacher); (M[k] = M[k] || []).push(a);
+  });
+  var uniq = function(a) { return a.filter(function(v, i) { return a.indexOf(v) === i; }).join(' / '); };
+  var keys = Object.keys(P).concat(Object.keys(M).filter(function(k) { return !P[k]; })).sort();
+  var ok = 0; _extRows = [];
+  keys.forEach(function(k) {
+    var ps = P[k] ? uniq(P[k].st) : '', ms = M[k] ? uniq(M[k].map(function(a) { return a.status; })) : '';
+    if (dec[k]) return;
+    if (ps && ms && ps === ms) { ok++; return; }
+    _extRows.push({ k: k, ps: ps, ms: ms, by: M[k] ? uniq(M[k].map(function(a) { return a.recordedByName || '?'; })) : '', recs: M[k] || [] });
+  });
+  var th = 'style="text-align:left;padding:6px;border-bottom:1px solid var(--grayb)"', tdc = 'style="padding:6px;border-bottom:1px solid var(--grayb)"';
+  body.innerHTML = '<div class="fbar"><input type="date" id="ex-from" value="' + from + '"><input type="date" id="ex-to" value="' + to + '"><button class="btn btn-xs btn-primary" onclick="lessonExt(document.getElementById(\'ex-from\').value,document.getElementById(\'ex-to\').value)">Show</button></div>'
+    + '<div class="card" style="padding:12px;margin-bottom:10px;font-size:13px">Extended teaching: <strong>' + ok + '</strong> sessions agree between the class prefect and the monitor or coordinator, <strong>' + _extRows.length + '</strong> need your decision. Your decision updates the record that payroll uses.</div>'
+    + '<div class="card" style="padding:10px;overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><tr><th ' + th + '>Date</th><th ' + th + '>Teacher</th><th ' + th + '>Class prefect</th><th ' + th + '>Monitor / coordinator</th><th ' + th + '></th></tr>'
+    + _extRows.map(function(x, i) {
+      var p = x.k.split('|');
+      return '<tr><td ' + tdc + '>' + _x(p[0]) + '</td><td ' + tdc + '>' + _x(p[1]) + '</td><td ' + tdc + '>' + (x.ps || '<em>not recorded</em>') + '</td><td ' + tdc + '>' + (x.ms ? _x(x.ms) + ' <small>(' + _x(x.by) + ')</small>' : '<em>not recorded</em>') + '</td><td ' + tdc + '>'
+        + '<button class="btn btn-xs btn-outline" onclick="extDecide(' + i + ',\'prefect\')">Accept prefect</button> <button class="btn btn-xs btn-outline" onclick="extDecide(' + i + ',\'monitor\')">Accept monitor</button></td></tr>';
+    }).join('') + '</table></div>';
+}
+async function extDecide(i, who) {
+  var x = _extRows[i]; if (!x || currentUser.role !== 'admin') return;
+  try {
+    if (who === 'prefect' && x.recs.length) {
+      if (!/^(on-time|late|absent)$/.test(x.ps)) throw new Error('prefect entries differ, correct them first');
+      for (var j = 0; j < x.recs.length; j++) { if (!(await sbPatch('attendance', x.recs[j].id, { status: x.ps }))) throw new Error('could not update the attendance record'); x.recs[j].status = x.ps; }
+    }
+    var p = x.k.split('|'), rec = { id: x.k, att_date: p[0], teacher: p[1], chosen: who, decided_by: currentUser.name || currentUser.username };
+    var r = await fetch(SUPA_URL + '/rest/v1/ext_decisions', { method: 'POST', headers: Object.assign({}, HDR, { 'Prefer': 'resolution=merge-duplicates,return=minimal' }), body: JSON.stringify(rec) });
+    if (!r.ok) throw new Error('code ' + r.status + '. Has 08_security_and_extended.sql been run?');
+    audit('EXT_DECISION', x.k + ' accepted ' + who, 'attendance');
+    showToast('Decision saved', 'success'); lessonExt(_extRange[0], _extRange[1]);
+  } catch (e) { showToast('Could not save: ' + e.message, 'error'); }
+}
 
 function loadStandardPeriods() {
   var std = [['Period 1','07:00 - 07:50'],['Period 2','07:50 - 08:40'],['Period 3','09:00 - 09:50'],['Period 4','09:50 - 10:40'],['Period 5','10:40 - 11:30'],['Period 6','11:30 - 12:20'],['Period 7','13:00 - 13:50'],['Period 8','13:50 - 14:40']];
