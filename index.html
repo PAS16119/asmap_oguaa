@@ -320,7 +320,7 @@ tr:hover td{background:#f9fafb;}
       <input type="password" id="lp" placeholder="Enter password" autocomplete="current-password">
     </div>
     <button class="btn btn-primary" onclick="doLogin()">Sign In →</button>
-    <p style="text-align:center;font-size:11px;color:var(--textm);margin-top:14px;">Adombra School Management &amp; Analytics Platform · v1.0 · build 23Oct-b</p>
+    <p style="text-align:center;font-size:11px;color:var(--textm);margin-top:14px;">Adombra School Management &amp; Analytics Platform · v1.0 · build 24Oct-c</p>
     <button onclick="testConnection()" style="width:100%;margin-top:8px;padding:8px;background:none;border:1px dashed #ccc;border-radius:8px;font-size:11px;color:#999;cursor:pointer;">🔌 Test Database Connection</button>
     <div id="conn-result" style="margin-top:8px;font-size:12px;text-align:center;display:none"></div>
     <div style="text-align:center;margin-top:10px;font-size:11px;color:#aaa">New school? <button onclick="showScreen('setup-screen')" style="background:none;border:none;color:var(--g3);cursor:pointer;font-size:11px;font-weight:600">First-time Setup →</button></div>
@@ -961,12 +961,12 @@ function buildNav() {
     tabs.push({id:'behaviour',icon:'⭐',label:'Conduct'});
 
   // Prefect reports
-  if (['admin','class_prefect'].includes(r)) tabs.push({id:'prefect',icon:'👁',label:'Prefect Reports'});
+  if (['admin','class_prefect'].includes(r)) tabs.push({id:'prefect',icon:'👁',label:'Extended Teaching Report'});
 
-  if (['admin','class_prefect'].includes(r) || hasPerm('lesson_log')) tabs.push({id:'lessons',icon:'🕒',label:'Lesson Log'});
+  if (['admin','class_prefect'].includes(r) || hasPerm('lesson_log') || hasPerm('lesson_reports')) tabs.push({id:'lessons',icon:'🕒',label:'Lesson Log'});
 
   // PTA
-  if (['admin','pta_prefect','pta_executive','coordinator'].includes(r))
+  if (r === 'admin' || hasPerm('pta_manage'))
     tabs.push({id:'pta',icon:'👥',label:'PTA'});
 
   // Reports
@@ -6078,76 +6078,16 @@ async function renderLessons(mode) {
     + '<button class="btn btn-xs ' + (mode === 'ext' ? 'btn-primary' : 'btn-outline') + '" onclick="renderLessons(\'ext\')">Extended check</button>'
     + '<button class="btn btn-xs btn-outline" onclick="syncTeachersFromTT()">Sync teachers</button>'
     + '<label class="btn btn-xs btn-outline" style="cursor:pointer">Import timetable<input type="file" accept=".json" style="display:none" onchange="importTimetable(this)"></label></div>' : '';
+  if (!admin && _canRep()) bar = '<div class="fbar"><button class="btn btn-xs ' + (mode === 'record' ? 'btn-primary' : 'btn-outline') + '" onclick="renderLessons(\'record\')">Record</button><button class="btn btn-xs ' + (mode === 'report' ? 'btn-primary' : 'btn-outline') + '" onclick="renderLessons(\'report\')">Report</button></div>';
   el.innerHTML = title + bar + '<div id="lsn-body">Loading…</div>';
-  if (mode === 'report' && admin) return lessonReport();
+  if (mode === 'report' && _canRep()) return lessonReport();
   if (mode === 'month' && admin) return lessonMonth();
   if (mode === 'access' && admin) return lessonAccess();
   if (mode === 'ext' && admin) return lessonExt();
   return lessonRecord();
 }
-async function lessonRecord(keepSel, keepDate) {
-  var admin = currentUser.role === 'admin', body = document.getElementById('lsn-body');
-  var active = {};
-  TT.slots.forEach(function(s) { if (!_isFixed(s)) s.cls.forEach(function(c) { active[c] = 1; }); });
-  var opts = TT.classes.filter(function(c) { return active[c.id]; });
-  var sel = keepSel, dt = admin ? keepDate : todayStr();
-  try { if (!sel) sel = localStorage.getItem('lsnClass') || ''; } catch (e) {}
-  if (!dt) dt = todayStr();
-  var h = '<div class="fbar"><select id="lsn-cls" onchange="try{localStorage.setItem(\'lsnClass\',this.value)}catch(e){};lessonRecord(this.value,document.getElementById(\'lsn-date\').value)"><option value="">Select class</option>'
-    + opts.map(function(c) { return '<option value="' + c.id + '"' + (c.id === sel ? ' selected' : '') + '>' + _x(c.n) + '</option>'; }).join('') + '</select>'
-    + '<input type="date" id="lsn-date" value="' + dt + '" ' + (admin ? 'max="' + todayStr() + '" onchange="lessonRecord(document.getElementById(\'lsn-cls\').value,this.value)"' : 'disabled') + '></div>';
-  var wd = new Date(dt + 'T12:00:00').getDay();
-  if (!sel) { body.innerHTML = h + '<div class="card" style="padding:14px">Choose your class to see today\'s lessons.</div>'; return; }
-  var recs = {};
-  try {
-    var r = await fetch(SUPA_URL + '/rest/v1/lesson_attendance?att_date=eq.' + dt + '&class_id=eq.' + sel + '&select=*', { headers: HDR });
-    (await r.json()).forEach(function(x) { recs[x.period + '|' + x.subject_id] = x; });
-  } catch (e) {}
-  var list = [];
-  TT.slots.forEach(function(s, i) { if (s.d === wd && s.cls.indexOf(sel) >= 0 && !_isFixed(s)) list.push([s, i]); });
-  list.sort(function(a, b) { return a[0].p - b[0].p; });
-  var now = new Date(), nm = now.getHours() * 60 + now.getMinutes(), lastTot = '';
-  try { lastTot = localStorage.getItem('lsnTot_' + sel) || ''; } catch (e) {}
-  if (!list.length) h += '<div class="card" style="padding:14px">No lessons on this day.</div>';
-  list.forEach(function(p) {
-    var s = p[0], i = p[1], pd = TT.periods.find(function(x) { return x.p === s.p; }) || {}, rec = recs[s.p + '|' + s.sub] || {};
-    var locked = !admin && pd.s && _mins(pd.s) > nm, st = rec.status || '';
-    var tn = s.t && s.t.length ? s.t.map(_tName).join(' / ') : (admin ? '<select onchange="assignTeacher(' + i + ',this.value)"><option value="">Set teacher</option>'
-      + (s.c && s.c.length ? s.c : TT.teachers.map(function(t) { return t.id; })).map(function(id) { return '<option value="' + id + '">' + _x(TT_IDX.t[id].n) + '</option>'; }).join('') + '</select>' : 'Teacher not set');
-    h += '<div class="card" style="padding:10px;margin-bottom:8px' + (locked ? ';opacity:.5' : '') + '"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><strong>P' + s.p + ' ' + _x(pd.s) + '-' + _x(pd.e) + ' · ' + _x(TT_IDX.s[s.sub].n) + '</strong><span>' + tn + '</span></div>'
-      + '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"><select id="ls-' + i + '"' + (locked ? ' disabled' : '') + '><option value="">Teacher status</option>'
-      + [['present', 'Present'], ['late', 'Late'], ['absent', 'Absent'], ['cover', 'Cover teacher'], ['no_lesson', 'No lesson held']].map(function(o) { return '<option value="' + o[0] + '"' + (st === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select>'
-      + _actSel(i, rec, locked) + '<input type="number" min="0" id="lm-' + i + '" placeholder="Minutes late" value="' + (rec.minutes_late || '') + '" style="width:110px"' + (locked ? ' disabled' : '') + '>'
-      + '<select id="lc-' + i + '"' + (locked ? ' disabled' : '') + '><option value="">Cover by</option>' + TT.teachers.map(function(t) { return '<option value="' + t.id + '"' + (rec.cover_teacher_id === t.id ? ' selected' : '') + '>' + _x(t.n) + '</option>'; }).join('') + '</select>'
-      + '<input type="number" min="0" id="lp-' + i + '" placeholder="Students present" value="' + (rec.students_present == null ? '' : rec.students_present) + '" style="width:130px"' + (locked ? ' disabled' : '') + '>'
-      + '<input type="number" min="0" id="lt-' + i + '" placeholder="Class size" value="' + (rec.students_total == null ? lastTot : rec.students_total) + '" style="width:100px"' + (locked ? ' disabled' : '') + '>'
-      + '<button class="btn btn-xs btn-primary"' + (locked ? ' disabled' : '') + ' onclick="saveLesson(' + i + ')">' + (rec.id ? 'Update' : 'Save') + '</button></div></div>';
-  });
-  body.innerHTML = h;
-}
-async function saveLesson(i) {
-  var s = TT.slots[i], g = function(k) { return (document.getElementById(k + '-' + i) || {}).value || ''; };
-  var sel = document.getElementById('lsn-cls').value, dt = document.getElementById('lsn-date').value, st = g('ls');
-  if (!st) { showToast('Choose the teacher status', 'warning'); return; }
-  var late = parseInt(g('lm')) || 0, pr = g('lp'), tot = g('lt'), act = g('la') || 'taught', ax = g('lx');
-  if (st !== 'absent' && st !== 'no_lesson' && act === 'assessment' && !ax) { showToast('Choose the assessment type', 'warning'); return; }
-  if (st === 'late' && late < 1) { showToast('Enter how many minutes late', 'warning'); return; }
-  if (st === 'cover' && !g('lc')) { showToast('Choose the cover teacher', 'warning'); return; }
-  if (st !== 'no_lesson') {
-    if (pr === '' || tot === '') { showToast('Enter students present and class size', 'warning'); return; }
-    if (+pr > +tot) { showToast('Students present cannot be more than the class size', 'warning'); return; }
-  }
-  var rec = { id: dt + '_' + sel + '_' + s.p + '_' + s.sub, att_date: dt, class_id: sel, subject_id: s.sub, period: s.p, teacher_ids: s.t || [], status: st,
-    activity: (st === 'absent' || st === 'no_lesson') ? 'other' : act, assess_type: (act === 'assessment' && st !== 'absent' && st !== 'no_lesson') ? ax : '',
-    minutes_late: st === 'late' ? late : 0, cover_teacher_id: st === 'cover' ? g('lc') : null,
-    students_present: st === 'no_lesson' ? null : +pr, students_total: st === 'no_lesson' ? null : +tot, recorded_by: currentUser.name || currentUser.username };
-  try {
-    var r = await fetch(SUPA_URL + '/rest/v1/lesson_attendance', { method: 'POST', headers: Object.assign({}, HDR, { 'Prefer': 'resolution=merge-duplicates,return=minimal' }), body: JSON.stringify(rec) });
-    if (!r.ok) throw new Error('code ' + r.status);
-    try { if (tot) localStorage.setItem('lsnTot_' + sel, tot); } catch (e) {}
-    showToast('Saved', 'success');
-  } catch (e) { showToast('Could not save: ' + e.message, 'error'); }
-}
+
+
 async function lessonReport(from, to) {
   var body = document.getElementById('lsn-body'), td = todayStr(), dd = new Date(); dd.setDate(dd.getDate() - ((dd.getDay() + 6) % 7));
   from = from || dd.toISOString().split('T')[0]; to = to || td;
@@ -6156,23 +6096,27 @@ async function lessonReport(from, to) {
     var r = await fetch(SUPA_URL + '/rest/v1/lesson_attendance?att_date=gte.' + from + '&att_date=lte.' + to + '&select=*&limit=5000', { headers: HDR });
     recs = r.ok ? await r.json() : [];
   } catch (e) {}
+  recs.forEach(_normRec);
   var T = {}, C = {}, sched = 0, d = new Date(from + 'T12:00:00'), end = new Date(to + 'T12:00:00');
-  function trow(id) { return T[id] || (T[id] = { s: 0, r: 0, present: 0, late: 0, absent: 0, cover: 0, mins: 0, assess: 0, attOnly: 0 }); }
+  function trow(id) { return T[id] || (T[id] = { s: 0, r: 0, present: 0, late: 0, absent: 0, cover: 0, mins: 0, assess: 0, attOnly: 0, rs: 0, rn: 0 }); }
   for (; d <= end; d.setDate(d.getDate() + 1)) {
     var w = d.getDay();
     TT.slots.forEach(function(s) { if (s.d === w && !_isFixed(s)) { sched++; (s.t || []).forEach(function(id) { trow(id).s++; }); } });
   }
   recs.forEach(function(x) {
-    (x.teacher_ids || []).forEach(function(id) { var t = trow(id); t.r++; if (x.activity === 'assessment') t.assess++; else if (x.activity === 'attendance_only') t.attOnly++; if (x.status === 'present') t.present++; else if (x.status === 'late') { t.late++; t.mins += x.minutes_late || 0; } else if (x.status === 'absent') t.absent++; else if (x.status === 'cover') t.cover++; });
+    (x.teacher_ids || []).forEach(function(id) { var t = trow(id); t.r++; if (x.activity === 'assessment') t.assess++; else if (x.activity === 'attendance_only') t.attOnly++; if (x.rating) { t.rs += x.rating; t.rn++; } if (x.status === 'present') t.present++; else if (x.status === 'late') { t.late++; t.mins += x.minutes_late || 0; } else if (x.status === 'absent') t.absent++; else if (x.status === 'cover') t.cover++; });
     var c = C[x.class_id] || (C[x.class_id] = { n: 0, p: 0, t: 0 }); c.n++; if (x.students_total > 0) { c.p += x.students_present || 0; c.t += x.students_total; }
   });
   var th = 'style="text-align:left;padding:6px;border-bottom:1px solid var(--grayb)"', tdc = 'style="padding:6px;border-bottom:1px solid var(--grayb)"';
   var h = '<div class="fbar"><input type="date" id="lr-from" value="' + from + '"><input type="date" id="lr-to" value="' + to + '"><button class="btn btn-xs btn-primary" onclick="lessonReport(document.getElementById(\'lr-from\').value,document.getElementById(\'lr-to\').value)">Show</button></div>'
     + '<div class="card" style="padding:12px;margin-bottom:10px"><strong>' + recs.length + '</strong> of <strong>' + sched + '</strong> scheduled lessons recorded (' + (sched ? Math.round(recs.length * 100 / sched) : 0) + '%)</div>'
-    + '<div class="card" style="padding:10px;margin-bottom:10px;overflow-x:auto"><div style="font-weight:600;margin-bottom:6px">Teachers</div><table style="width:100%;border-collapse:collapse;font-size:13px"><tr><th ' + th + '>Teacher</th><th ' + th + '>Scheduled</th><th ' + th + '>Recorded</th><th ' + th + '>Present</th><th ' + th + '>Late</th><th ' + th + '>Absent</th><th ' + th + '>Cover</th><th ' + th + '>Minutes late</th><th ' + th + '>Assessments</th><th ' + th + '>Attendance only</th></tr>'
-    + Object.keys(T).filter(function(id) { return T[id].s || T[id].r; }).sort(function(a, b) { return T[b].absent - T[a].absent || T[b].late - T[a].late; }).map(function(id) { var t = T[id]; return '<tr><td ' + tdc + '>' + _x(TT_IDX.t[id] ? TT_IDX.t[id].n : id) + '</td><td ' + tdc + '>' + t.s + '</td><td ' + tdc + '>' + t.r + '</td><td ' + tdc + '>' + t.present + '</td><td ' + tdc + '>' + t.late + '</td><td ' + tdc + '>' + t.absent + '</td><td ' + tdc + '>' + t.cover + '</td><td ' + tdc + '>' + t.mins + '</td><td ' + tdc + '>' + t.assess + '</td><td ' + tdc + '>' + t.attOnly + '</td></tr>'; }).join('') + '</table></div>'
+    + '<div class="card" style="padding:10px;margin-bottom:10px;overflow-x:auto"><div style="font-weight:600;margin-bottom:6px">Teachers</div><table style="width:100%;border-collapse:collapse;font-size:13px"><tr><th ' + th + '>Teacher</th><th ' + th + '>Scheduled</th><th ' + th + '>Recorded</th><th ' + th + '>Present</th><th ' + th + '>Late</th><th ' + th + '>Absent</th><th ' + th + '>Cover</th><th ' + th + '>Minutes late</th><th ' + th + '>Assessments</th><th ' + th + '>Attendance only</th><th ' + th + '>Avg rating</th></tr>'
+    + Object.keys(T).filter(function(id) { return T[id].s || T[id].r; }).sort(function(a, b) { return T[b].absent - T[a].absent || T[b].late - T[a].late; }).map(function(id) { var t = T[id]; return '<tr><td ' + tdc + '>' + _x(TT_IDX.t[id] ? TT_IDX.t[id].n : id) + '</td><td ' + tdc + '>' + t.s + '</td><td ' + tdc + '>' + t.r + '</td><td ' + tdc + '>' + t.present + '</td><td ' + tdc + '>' + t.late + '</td><td ' + tdc + '>' + t.absent + '</td><td ' + tdc + '>' + t.cover + '</td><td ' + tdc + '>' + t.mins + '</td><td ' + tdc + '>' + t.assess + '</td><td ' + tdc + '>' + t.attOnly + '</td><td ' + tdc + '>' + (t.rn ? (t.rs / t.rn).toFixed(1) : '-') + '</td></tr>'; }).join('') + '</table></div>'
     + '<div class="card" style="padding:10px;overflow-x:auto"><div style="font-weight:600;margin-bottom:6px">Student attendance by class</div><table style="width:100%;border-collapse:collapse;font-size:13px"><tr><th ' + th + '>Class</th><th ' + th + '>Lessons recorded</th><th ' + th + '>Average attendance</th></tr>'
     + Object.keys(C).sort(function(a, b) { return (C[a].t ? C[a].p / C[a].t : 1) - (C[b].t ? C[b].p / C[b].t : 1); }).map(function(id) { var c = C[id]; return '<tr><td ' + tdc + '>' + _x(TT_IDX.c[id] ? TT_IDX.c[id].n : id) + '</td><td ' + tdc + '>' + c.n + '</td><td ' + tdc + '>' + (c.t ? Math.round(c.p * 100 / c.t) + '%' : '-') + '</td></tr>'; }).join('') + '</table></div>';
+  var rmk = recs.filter(function(x) { return x.remark && x.remark.trim(); }).sort(function(a, b) { return (a.rating || 9) - (b.rating || 9); }).slice(0, 60);
+  h += '<div class="card" style="padding:10px;margin-top:10px"><div style="font-weight:600;margin-bottom:6px">Remarks and concerns (lowest ratings first)</div>' + (rmk.length ? rmk.map(function(x) {
+    return '<div style="padding:6px 0;border-bottom:1px solid var(--grayb);font-size:13px"><strong>' + _x((x.teacher_ids || []).map(_tName).join(' / ')) + '</strong> · ' + _x(TT_IDX.c[x.class_id] ? TT_IDX.c[x.class_id].n : '') + ' P' + x.period + ' · ' + x.att_date + (x.rating ? ' · rating ' + x.rating : '') + '<br>' + _x(x.remark) + '</div>'; }).join('') : 'No remarks in this period.') + '</div>';
   body.innerHTML = h;
 }
 
@@ -6185,22 +6129,8 @@ function _actSel(i, rec, locked) {
   return '<select id="la-' + i + '"' + dis + '>' + o([['taught', 'Taught'], ['assessment', 'Assessment'], ['attendance_only', 'Attendance only'], ['revision', 'Revision'], ['other', 'Other']], rec.activity || 'taught') + '</select>'
     + '<select id="lx-' + i + '"' + dis + '><option value="">Assessment type</option>' + o(['Quiz', 'Class test', 'Exercise', 'Assignment', 'Project', 'Exam'].map(function(a) { return [a, a]; }), rec.assess_type || '') + '</select>';
 }
-function lessonAccess() {
-  var body = document.getElementById('lsn-body');
-  var list = DB.users.filter(function(u) { return u.role !== 'admin' && u.role !== 'class_prefect'; });
-  body.innerHTML = '<div class="card" style="padding:12px"><div style="font-size:13px;margin-bottom:8px">Class prefects can always record lessons. Tick anyone else who may record the Lesson Log, such as HODs, assistant heads or supervisors.</div>'
-    + list.map(function(u) {
-      return '<label style="display:flex;gap:8px;padding:6px 0;border-bottom:1px solid var(--grayb)"><input type="checkbox" ' + ((u.permissions || []).indexOf('lesson_log') >= 0 ? 'checked' : '') + ' onchange="setLessonAccess(\'' + u.id + '\',this.checked)"><span>' + _x(u.name) + ' <small>(' + _x(u.role) + ')</small></span></label>';
-    }).join('') + '</div>';
-}
-async function setLessonAccess(id, on) {
-  var u = DB.users.find(function(x) { return x.id === id; }); if (!u) return;
-  var perms = (u.permissions || []).filter(function(p) { return p !== 'lesson_log'; }); if (on) perms.push('lesson_log');
-  try {
-    await callAdminUsers('update_user', { legacy_id: id, full_name: u.name, username: u.username, role: u.role, assigned_classes: u.classes || [], permissions: perms });
-    u.permissions = perms; showToast('Saved', 'success');
-  } catch (e) { showToast('Could not save: ' + e.message, 'error'); lessonAccess(); }
-}
+
+
 async function lessonMonth(ym) {
   var body = document.getElementById('lsn-body'); ym = ym || todayStr().slice(0, 7);
   var last = new Date(+ym.slice(0, 4), +ym.slice(5, 7), 0).getDate(), from = ym + '-01', to = ym + '-' + String(last).padStart(2, '0'), recs = [];
@@ -6208,6 +6138,7 @@ async function lessonMonth(ym) {
     var r = await fetch(SUPA_URL + '/rest/v1/lesson_attendance?att_date=gte.' + from + '&att_date=lte.' + to + '&select=*&limit=10000', { headers: HDR });
     recs = r.ok ? await r.json() : [];
   } catch (e) {}
+  recs.forEach(_normRec);
   var S = {}, byName = {};
   TT.teachers.forEach(function(t) { byName[String(t.n).trim().toUpperCase()] = t.id; });
   function row(id) { return S[id] || (S[id] = { n: 0, pres: 0, late: 0, held: 0, del: 0, ass: 0, eN: 0, eOk: 0 }); }
@@ -6262,6 +6193,7 @@ async function lessonExt(from, to) {
     var d = await fetch(SUPA_URL + '/rest/v1/ext_decisions?select=*&limit=5000', { headers: HDR });
     (d.ok ? await d.json() : []).forEach(function(x) { dec[x.id] = x; });
   } catch (e) {}
+  recs.forEach(_normRec);
   var norm = function(n) { return String(n || '').trim().replace(/\s+/g, ' ').toUpperCase(); }, map = { present: 'on-time', late: 'late', absent: 'absent' }, P = {}, M = {};
   recs.forEach(function(x) {
     if (!map[x.status]) return;
@@ -6303,6 +6235,154 @@ async function extDecide(i, who) {
     audit('EXT_DECISION', x.k + ' accepted ' + who, 'attendance');
     showToast('Decision saved', 'success'); lessonExt(_extRange[0], _extRange[1]);
   } catch (e) { showToast('Could not save: ' + e.message, 'error'); }
+}
+
+var LATE_GRACE = 5, _lsnRows = [], _lsnSel = '', _lsnDt = '';
+function _tm(s) { if (!s) return null; var a = String(s).split(':'); return (+a[0]) * 60 + (+a[1]); }
+function _hh(s) { var a = String(s || '').split(':'); return a.length < 2 ? '' : ('0' + a[0]).slice(-2) + ':' + ('0' + a[1]).slice(-2); }
+function _myTT() { var v = ''; (currentUser.permissions || []).forEach(function(p) { if (String(p).indexOf('ttclass:') === 0) v = String(p).slice(8); }); return v; }
+function _canRep() { return currentUser.role === 'admin' || (currentUser.permissions || []).indexOf('lesson_reports') >= 0; }
+function _normRec(x) { if (x.status === 'present' && (x.minutes_late || 0) > LATE_GRACE) x.status = 'late'; else if (x.status === 'not_held') x.status = 'no_lesson'; return x; }
+function llToggle(i) {
+  var v = function(id) { return (document.getElementById(id + '-' + i) || {}).value; }, st = v('xs'), cov = v('xv') === '1';
+  var sh = function(id, on) { var e = document.getElementById(id + '-' + i); if (e) e.style.display = on ? '' : 'none'; };
+  sh('xP', st === 'present'); sh('xA', st === 'absent'); sh('xC', st === 'absent' && cov); sh('xH', st === 'not_held'); sh('xM', st === 'present' || (st === 'absent' && cov));
+}
+async function lessonRecord(keepSel, keepDate) {
+  var admin = currentUser.role === 'admin', isPref = currentUser.role === 'class_prefect', body = document.getElementById('lsn-body');
+  var active = {}; TT.slots.forEach(function(s) { if (!_isFixed(s)) s.cls.forEach(function(c) { active[c] = 1; }); });
+  var opts = TT.classes.filter(function(c) { return active[c.id]; });
+  var sel = isPref ? _myTT() : keepSel, dt = admin ? keepDate : todayStr();
+  try { if (!sel && !isPref) sel = localStorage.getItem('lsnClass') || ''; } catch (e) {}
+  if (!dt) dt = todayStr();
+  _lsnSel = sel; _lsnDt = dt;
+  var h = '<div class="fbar">' + (isPref ? '<strong>' + _x(TT_IDX.c[sel] ? TT_IDX.c[sel].n : 'No class assigned') + '</strong>'
+    : '<select id="lsn-cls" onchange="try{localStorage.setItem(\'lsnClass\',this.value)}catch(e){};lessonRecord(this.value,document.getElementById(\'lsn-date\').value)"><option value="">Select class</option>'
+      + opts.map(function(c) { return '<option value="' + c.id + '"' + (c.id === sel ? ' selected' : '') + '>' + _x(c.n) + '</option>'; }).join('') + '</select>')
+    + '<input type="date" id="lsn-date" value="' + dt + '" ' + (admin ? 'max="' + todayStr() + '" onchange="lessonRecord(' + (isPref ? '' : 'document.getElementById(\'lsn-cls\').value') + ',this.value)"' : 'disabled') + '></div>';
+  if (!sel) { body.innerHTML = h + '<div class="card" style="padding:14px">' + (isPref ? 'Your class has not been set yet. Please ask the admin.' : 'Choose a class to see its lessons.') + '</div>'; return; }
+  var recs = {};
+  try {
+    var r = await fetch(SUPA_URL + '/rest/v1/lesson_attendance?att_date=eq.' + dt + '&class_id=eq.' + sel + '&select=*', { headers: HDR });
+    (await r.json()).forEach(function(x) { recs[x.period + '|' + x.subject_id] = x; });
+  } catch (e) {}
+  var wd = new Date(dt + 'T12:00:00').getDay(), now = new Date(), nm = now.getHours() * 60 + now.getMinutes(), lastTot = '';
+  try { lastTot = localStorage.getItem('lsnTot_' + sel) || ''; } catch (e) {}
+  var teachers = TT.teachers.map(function(t) { return '<option value="' + t.id + '">' + _x(t.n) + '</option>'; }).join('');
+  var o = function(list, cur) { return list.map(function(a) { return '<option value="' + a[0] + '"' + (String(cur) === String(a[0]) ? ' selected' : '') + '>' + a[1] + '</option>'; }).join(''); };
+  _lsnRows = [];
+  for (var p = 1; p <= 9; p++) {
+    var at = [], pd = TT.periods.find(function(x) { return x.p === p; }) || {};
+    TT.slots.forEach(function(s, i) { if (s.d === wd && s.p === p && s.cls.indexOf(sel) >= 0) at.push([s, i]); });
+    var real = at.filter(function(a) { return !_isFixed(a[0]); });
+    if (p === 9 && !real.length) continue;
+    var head = 'P' + p + ' ' + _x(pd.s) + '-' + _x(pd.e);
+    if (!real.length) { h += '<div class="card" style="padding:8px 10px;margin-bottom:6px;opacity:.6">' + head + ' · ' + (at.length ? _x(TT_IDX.s[at[0][0].sub].n) : 'No lesson scheduled') + '</div>'; continue; }
+    real.forEach(function(a) {
+      var s = a[0], i = a[1], rec = recs[s.p + '|' + s.sub] || {}, st = ({ late: 'present', no_lesson: 'not_held', cover: 'absent' })[rec.status] || rec.status || '';
+      var locked = !admin && pd.s && _tm(pd.s) > nm, dis = locked ? ' disabled' : '';
+      var tn = s.t && s.t.length ? s.t.map(_tName).join(' / ') : (admin ? '<select onchange="assignTeacher(' + i + ',this.value)"><option value="">Set teacher</option>' + (s.c && s.c.length ? s.c : TT.teachers.map(function(t) { return t.id; })).map(function(id) { return '<option value="' + id + '">' + _x(TT_IDX.t[id].n) + '</option>'; }).join('') + '</select>' : 'Teacher not set');
+      _lsnRows.push(i);
+      h += '<div class="card" style="padding:10px;margin-bottom:8px' + (locked ? ';opacity:.5' : '') + '"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><strong>' + head + ' · ' + _x(TT_IDX.s[s.sub].n) + (p === 9 ? ' <small>(Extended teaching)</small>' : '') + '</strong><span>' + tn + '</span></div>'
+        + '<div style="margin-top:8px"><select id="xs-' + i + '" onchange="llToggle(' + i + ')"' + dis + '>' + o([['', 'Select'], ['present', 'Teacher present'], ['absent', 'Teacher absent'], ['not_held', 'Lesson not held']], st) + '</select></div>'
+        + '<div id="xP-' + i + '" style="display:none;margin-top:8px">Time in <input type="time" id="xi-' + i + '" value="' + (_hh(rec.time_in) || _hh(pd.s)) + '"' + dis + '> Time out <input type="time" id="xo-' + i + '" value="' + (_hh(rec.time_out) || _hh(pd.e)) + '"' + dis + '></div>'
+        + '<div id="xA-' + i + '" style="display:none;margin-top:8px"><select id="xv-' + i + '" onchange="llToggle(' + i + ')"' + dis + '>' + o([['0', 'No one came to cover'], ['1', 'Covered by someone']], rec.covered ? '1' : '0') + '</select>'
+        + '<span id="xC-' + i + '" style="display:none"> <select id="xc-' + i + '"' + dis + '><option value="">Cover teacher</option>' + teachers.replace('value="' + rec.cover_teacher_id + '"', 'value="' + rec.cover_teacher_id + '" selected') + '</select> In <input type="time" id="xci-' + i + '" value="' + (_hh(rec.cover_in) || _hh(pd.s)) + '"' + dis + '> Out <input type="time" id="xco-' + i + '" value="' + (_hh(rec.cover_out) || _hh(pd.e)) + '"' + dis + '></span></div>'
+        + '<div id="xH-' + i + '" style="display:none;margin-top:8px"><select id="xr-' + i + '"' + dis + '>' + o([['', 'Reason'], ['Holiday', 'Holiday'], ['Examination', 'Examination'], ['Other', 'Other']], rec.reason || '') + '</select> <input type="text" id="xro-' + i + '" placeholder="If other, specify" value="' + _x(rec.reason_other || '') + '"' + dis + '></div>'
+        + '<div id="xM-' + i + '" style="display:none;margin-top:8px;display:none;gap:6px;flex-wrap:wrap">' + _actSel(i, rec, locked)
+        + '<input type="number" min="0" id="xp-' + i + '" placeholder="Students present" value="' + (rec.students_present == null ? '' : rec.students_present) + '" style="width:130px"' + dis + '>'
+        + '<input type="number" min="0" id="xt-' + i + '" placeholder="Class size" value="' + (rec.students_total == null ? lastTot : rec.students_total) + '" style="width:100px"' + dis + '>'
+        + '<select id="xg-' + i + '"' + dis + '><option value="">Rate teacher</option>' + o([[5, '5 Excellent'], [4, '4 Good'], [3, '3 Fair'], [2, '2 Poor'], [1, '1 Very poor']], rec.rating || '') + '</select>'
+        + '<input type="text" id="xk-' + i + '" placeholder="Remarks or concerns" value="' + _x(rec.remark || '') + '" style="min-width:200px"' + dis + '></div></div>';
+    });
+  }
+  h += '<button class="btn btn-primary" style="width:100%;margin-top:6px" onclick="saveDay()">Save day</button>';
+  body.innerHTML = h;
+  _lsnRows.forEach(llToggle);
+}
+async function saveDay() {
+  var sel = _lsnSel, dt = _lsnDt, out = [], tot = '';
+  for (var k = 0; k < _lsnRows.length; k++) {
+    var i = _lsnRows[k], s = TT.slots[i], g = function(id) { return (document.getElementById(id + '-' + i) || {}).value || ''; }, st = g('xs');
+    if (!st) continue;
+    var pd = TT.periods.find(function(x) { return x.p === s.p; }) || {}, ps = _tm(pd.s), pe = _tm(pd.e), lab = 'Period ' + s.p + ' (' + TT_IDX.s[s.sub].n + '): ';
+    var r = { id: dt + '_' + sel + '_' + s.p + '_' + s.sub, att_date: dt, class_id: sel, subject_id: s.sub, period: s.p, teacher_ids: s.t || [], status: st, recorded_by: currentUser.name || currentUser.username,
+      minutes_late: 0, minutes_used: 0, time_in: null, time_out: null, covered: false, cover_teacher_id: null, cover_in: null, cover_out: null, reason: '', reason_other: '', rating: null, remark: '',
+      activity: 'other', assess_type: '', students_present: null, students_total: null };
+    var cov = st === 'absent' && g('xv') === '1';
+    if (st === 'present' || cov) {
+      var ti = st === 'present' ? g('xi') : g('xci'), to = st === 'present' ? g('xo') : g('xco');
+      if (!ti || !to || _tm(to) <= _tm(ti)) { showToast(lab + 'enter a valid time in and time out', 'warning'); return; }
+      r.minutes_used = Math.max(0, Math.min(_tm(to), pe) - Math.max(_tm(ti), ps));
+      if (st === 'present') { r.time_in = ti; r.time_out = to; r.minutes_late = Math.max(0, _tm(ti) - ps); }
+      else { if (!g('xc')) { showToast(lab + 'choose the cover teacher', 'warning'); return; } r.covered = true; r.cover_teacher_id = g('xc'); r.cover_in = ti; r.cover_out = to; }
+      r.activity = g('la') || 'taught'; r.assess_type = r.activity === 'assessment' ? g('lx') : '';
+      if (r.activity === 'assessment' && !r.assess_type) { showToast(lab + 'choose the assessment type', 'warning'); return; }
+      var pr = g('xp'), tt = g('xt');
+      if (pr === '' || tt === '' || +pr > +tt) { showToast(lab + 'enter students present (not more than the class size)', 'warning'); return; }
+      r.students_present = +pr; r.students_total = +tt; tot = tt; r.rating = +g('xg') || null; r.remark = g('xk').trim();
+    } else if (st === 'not_held') {
+      r.reason = g('xr'); r.reason_other = g('xro').trim();
+      if (!r.reason || (r.reason === 'Other' && !r.reason_other)) { showToast(lab + 'give the reason the lesson was not held', 'warning'); return; }
+    }
+    out.push(r);
+  }
+  if (!out.length) { showToast('Nothing to save yet', 'warning'); return; }
+  try {
+    var res = await fetch(SUPA_URL + '/rest/v1/lesson_attendance', { method: 'POST', headers: Object.assign({}, HDR, { 'Prefer': 'resolution=merge-duplicates,return=minimal' }), body: JSON.stringify(out) });
+    if (!res.ok) throw new Error('code ' + res.status + '. Has 10_lesson_log_v3.sql been run?');
+    try { if (tot) localStorage.setItem('lsnTot_' + sel, tot); } catch (e) {}
+    showToast(out.length + ' lesson(s) saved', 'success');
+  } catch (e) { showToast('Could not save: ' + e.message, 'error'); }
+}
+function lessonAccess() {
+  var body = document.getElementById('lsn-body'), has = function(u, f) { return (u.permissions || []).indexOf(f) >= 0; };
+  var cls = TT.classes.filter(function(c) { return TT.slots.some(function(s) { return s.cls.indexOf(c.id) >= 0 && !_isFixed(s); }); });
+  body.innerHTML = '<div class="card" style="padding:12px"><div style="font-size:13px;margin-bottom:8px">Set each class prefect\'s class (they can only record that class). For everyone else, tick who may record the Lesson Log and who may see the full teacher report and ratings.</div>'
+    + DB.users.filter(function(u) { return u.role !== 'admin'; }).map(function(u) {
+      var pref = u.role === 'class_prefect', cur = ''; (u.permissions || []).forEach(function(p) { if (String(p).indexOf('ttclass:') === 0) cur = String(p).slice(8); });
+      return '<div style="padding:6px 0;border-bottom:1px solid var(--grayb)"><strong>' + _x(u.name) + '</strong> <small>(' + _x(u.role) + ')</small><div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:4px">'
+        + (pref ? '<select onchange="setPerm(\'' + u.id + '\',\'ttclass\',this.value)"><option value="">Class not set</option>' + cls.map(function(c) { return '<option value="' + c.id + '"' + (c.id === cur ? ' selected' : '') + '>' + _x(c.n) + '</option>'; }).join('') + '</select>'
+          : '<label><input type="checkbox" ' + (has(u, 'lesson_log') ? 'checked' : '') + ' onchange="setPerm(\'' + u.id + '\',\'lesson_log\',this.checked)"> Can record</label>')
+        + '<label><input type="checkbox" ' + (has(u, 'lesson_reports') ? 'checked' : '') + ' onchange="setPerm(\'' + u.id + '\',\'lesson_reports\',this.checked)"> Can see all teacher reports and ratings</label></div></div>';
+    }).join('') + '</div>';
+}
+async function setPerm(id, flag, val) {
+  var u = DB.users.find(function(x) { return x.id === id; }); if (!u) return;
+  var perms = (u.permissions || []).filter(function(p) { return flag === 'ttclass' ? String(p).indexOf('ttclass:') !== 0 : p !== flag; });
+  if (flag === 'ttclass') { if (val) perms.push('ttclass:' + val); } else if (val) perms.push(flag);
+  try {
+    await callAdminUsers('update_user', { legacy_id: id, full_name: u.name, username: u.username, role: u.role, assigned_classes: u.classes || [], permissions: perms });
+    u.permissions = perms; showToast('Saved', 'success');
+  } catch (e) { showToast('Could not save: ' + e.message, 'error'); if (document.getElementById('lsn-body')) lessonAccess(); else renderPTA(); }
+}
+
+
+async function applyPTAFines(meetingId) {
+  var m = (DB.ptaMeetings || []).find(function(x) { return x.id === meetingId; }); if (!m || !(m.fine > 0) || m.finesApplied) return;
+  var inv = DB.students.filter(function(s) { return s.status === 'active' && (!(m.targetClasses || []).length || m.targetClasses.indexOf(s.class) >= 0); });
+  var marked = {}; (DB.ptaAttendance || []).forEach(function(a) { if (a.meetingId === meetingId) marked[a.studentId] = a; });
+  var unmarked = inv.filter(function(s) { return !marked[s.id]; }).length;
+  if (unmarked) { showToast(unmarked + ' invited parents are not marked yet. Mark everyone first.', 'warning'); return; }
+  var absent = inv.filter(function(s) { return !marked[s.id].parentAttended; });
+  if (!absent.length) { showToast('Everyone attended. No fines to apply.', 'success'); return; }
+  showConfirm('Apply absence fines', absent.length + ' parents were absent. Add GHS ' + m.fine + ' each (GHS ' + (absent.length * m.fine) + ' in total) to what they owe?', async function() {
+    var rows = absent.map(function(s) { return { id: 'fine_' + meetingId + '_' + s.id, student_id: s.id, student_name: s.name, class_name: s.class, kind: 'pta_fine', meeting_id: meetingId, amount: m.fine, note: 'Absent from PTA meeting: ' + m.title, created_by: currentUser.name || currentUser.username }; });
+    try {
+      var r = await fetch(SUPA_URL + '/rest/v1/student_charges', { method: 'POST', headers: Object.assign({}, HDR, { 'Prefer': 'resolution=merge-duplicates,return=minimal' }), body: JSON.stringify(rows) });
+      if (!r.ok) throw new Error('code ' + r.status + '. Has 11_pta.sql been run?');
+      if (!(await sbPatch('pta_meetings', meetingId, { fines_applied: true }))) throw new Error('could not mark the meeting');
+      m.finesApplied = true; if (!DB.charges) DB.charges = [];
+      rows.forEach(function(x) { DB.charges.push({ id: x.id, studentId: x.student_id, student: x.student_name, class: x.class_name, kind: x.kind, meetingId: x.meeting_id, amount: x.amount, note: x.note, waived: false }); });
+      audit('PTA_FINES', m.title + ': ' + absent.length + ' fines', 'pta_meetings', meetingId); showToast(absent.length + ' fines applied', 'success'); renderPTA();
+    } catch (e) { showToast('Could not apply fines: ' + e.message, 'error'); }
+  }, 'Apply fines', 'btn-primary');
+}
+async function waiveFine(id) {
+  if (currentUser.role !== 'admin') return;
+  var c = (DB.charges || []).find(function(x) { return x.id === id; }); if (!c) return;
+  if (!(await sbPatch('student_charges', id, { waived: true, waived_by: currentUser.name || currentUser.username }))) { showToast('Could not waive', 'error'); return; }
+  c.waived = true; audit('WAIVE_FINE', c.student + ' GHS ' + c.amount, 'student_charges', id); renderPTA();
 }
 
 function loadStandardPeriods() {
@@ -6581,11 +6661,11 @@ function sendAdmissionSms(phone, studentName, waLink) {
   // Call Supabase Edge Function
   fetch(SUPA_URL+'/functions/v1/send-sms', {
     method: 'POST',
-    headers: { 'Content-Type':'application/json', 'Authorization':'Bearer '+SUPA_KEY },
+    headers: Object.assign({}, HDR, { 'Content-Type':'application/json' }),
     body: JSON.stringify({ to: formatted, message: msg })
   }).then(function(r){
     if (r.ok) showToast('Welcome SMS sent to '+phone,'success');
-    else showToast('SMS not sent — Edge Function not deployed yet','warning');
+    else showToast('SMS could not be sent. Check the send-sms function logs.','warning');
   }).catch(function(){ showToast('SMS service not available yet','warning'); });
 }
 
@@ -6596,10 +6676,11 @@ function asmapSMS(payload) {
   // payload: {to, message} | {recipients:[], message} | {bulk:[{to,message}]}
   return fetch(SUPA_URL + '/functions/v1/send-sms', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + SUPA_KEY },
+    headers: Object.assign({}, HDR, { 'Content-Type': 'application/json' }),
     body: JSON.stringify(payload)
   }).then(function(r) {
-    return r.json().then(function(data) {
+    return r.json().catch(function() { return {}; }).then(function(data) {
+      if (!r.ok || data.success === false) { data.success = false; showToast('SMS failed: ' + (data.error || ('HTTP ' + r.status)), 'error'); }
       var count = payload.bulk ? payload.bulk.length : (payload.recipients ? payload.recipients.length : 1);
       SMS_LOG.unshift({ ts: Date.now(), count: count, status: data.success ? 'sent' : 'failed', sandbox: data.sandbox });
       if (SMS_LOG.length > 100) SMS_LOG = SMS_LOG.slice(0, 100);
@@ -6618,7 +6699,8 @@ function getStudentBalance(studentName, className) {
   }).reduce(function(s, p) { return s + (p.rawAmount || p.amount); }, 0);
   // Expected = sum of all purposes expected amounts
   var expected = DB.purposes.reduce(function(s, p) { return s + (p.expected || 0); }, 0);
-  return Math.max(0, expected - paid);
+  var fines = (DB.charges || []).filter(function(c) { return c.student === studentName && c.class === className && !c.waived; }).reduce(function(a, c) { return a + c.amount; }, 0);
+  return Math.max(0, expected + fines - paid);
 }
 
 // SMS PAGE RENDER
@@ -7433,13 +7515,14 @@ function renderPTA() {
   var isAdmin = r === 'admin';
   var isPTAPrefect = r === 'pta_prefect';
   var isPTAExec = r === 'pta_executive';
+  var canManage = isAdmin || (currentUser.permissions || []).indexOf('pta_manage') >= 0;
   var myClass = (currentUser.classes||[])[0] || '';
 
   var meetings = DB.ptaMeetings || [];
   var attendance = DB.ptaAttendance || [];
 
   var html = '<div class="shdr"><div class="stitle">👥 PTA</div>'
-    +(isAdmin?'<button class="btn btn-primary btn-sm" onclick="openPTAMeetingForm()">+ New Meeting</button>':'')
+    +(canManage?'<button class="btn btn-primary btn-sm" onclick="openPTAMeetingForm()">+ New Meeting</button>':'')
     +'</div>';
 
   // Stats
@@ -7466,7 +7549,10 @@ function renderPTA() {
         +'<div style="font-size:18px;font-weight:800;color:var(--g2)">'+present+'/'+att.length+'</div>'
         +'<div style="font-size:10px;color:var(--textm)">attended</div>'
         +'</div></div>'
-        +(isPTAPrefect||isAdmin?'<button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="openMarkAttendance(\''+m.id+'\',\''+m.title.replace(/'/g,"\\'")+'\')" >✅ Mark Attendance</button>':'')
+        +(canManage?'<button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="openMarkAttendance(\''+m.id+'\',\''+m.title.replace(/'/g,"\\'")+'\')" >✅ Mark Attendance</button>':'')
+        +(canManage&&m.fine>0&&!m.finesApplied?'<button class="btn btn-primary btn-sm" style="margin-top:8px;margin-left:6px" onclick="applyPTAFines(\''+m.id+'\')">Apply absence fines (GHS '+m.fine+')</button>':'')
+        +(m.finesApplied?'<span class="badge bgray" style="margin-left:6px">Fines applied</span>':'')
+        +((m.targetClasses||[]).length?'<div style="font-size:11px;color:var(--textm);margin-top:6px">Invited: '+m.targetClasses.join(', ')+'</div>':'')
         +'</div>';
     }).join('');
   }
@@ -7483,6 +7569,17 @@ function renderPTA() {
       +'</div></div>';
   }
 
+  if (isAdmin) {
+    html += '<div class="card"><div class="ctitle">Who can manage PTA</div><div style="font-size:12px;margin-bottom:6px">Only people you tick can set up meetings and mark attendance.</div>'
+      + DB.users.filter(function(u) { return u.role !== 'admin'; }).map(function(u) {
+        return '<label style="display:flex;gap:8px;padding:5px 0;border-bottom:1px solid var(--grayb)"><input type="checkbox" ' + ((u.permissions || []).indexOf('pta_manage') >= 0 ? 'checked' : '') + ' onchange="setPerm(\'' + u.id + '\',\'pta_manage\',this.checked)"><span>' + _x(u.name) + ' <small>(' + _x(u.role) + ')</small></span></label>'; }).join('') + '</div>';
+  }
+  var fines = (DB.charges || []).filter(function(c) { return c.kind === 'pta_fine'; });
+  if (canManage && fines.length) {
+    html += '<div class="card"><div class="ctitle">Absence fines</div><div style="font-size:12px;margin-bottom:6px">' + fines.filter(function(c) { return !c.waived; }).length + ' active, GHS ' + fines.filter(function(c) { return !c.waived; }).reduce(function(a, c) { return a + c.amount; }, 0) + ' in total</div>'
+      + fines.slice(0, 150).map(function(c) {
+        return '<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid var(--grayb);font-size:13px' + (c.waived ? ';text-decoration:line-through;opacity:.6' : '') + '"><span>' + _x(c.student) + ' <small>(' + _x(c.class) + ')</small></span><span>GHS ' + c.amount + (isAdmin && !c.waived ? ' <button class="btn btn-xs btn-outline" onclick="waiveFine(\'' + c.id + '\')">Waive</button>' : '') + '</span></div>'; }).join('') + '</div>';
+  }
   el.innerHTML = html;
 }
 
@@ -7495,6 +7592,8 @@ function openPTAMeetingForm() {
     +'<div class="fgrp"><label>TERM</label><select id="ptam-term">'+termOpts+'</select></div>'
     +'</div>'
     +'<div class="fgrp"><label>VENUE</label><input type="text" id="ptam-venue" placeholder="e.g. School Hall"></div>'
+    +'<div class="fgrp"><label>INVITED CLASSES (Ctrl+click for several; leave empty to invite all parents)</label><select id="ptam-cls" multiple size="6" style="width:100%">'+DB.classes.map(function(c){ return '<option>'+c+'</option>'; }).join('')+'</select></div>'
+    +'<div class="fgrp"><label>FINE FOR ABSENCE (GHS, 0 for none)</label><input type="number" min="0" id="ptam-fine" value="0"></div>'
     +'<div class="fgrp"><label>NOTES</label><textarea id="ptam-notes" style="width:100%;height:60px;padding:8px;border:1.5px solid var(--grayb);border-radius:8px;font-family:inherit;font-size:13px"></textarea></div>'
     +'<button class="btn btn-primary" style="width:100%" onclick="submitPTAMeeting()">Create Meeting</button>'
   );
@@ -7509,12 +7608,13 @@ async function submitPTAMeeting() {
   if (!title||!date) { showToast('Enter title and date','error'); return; }
 
   var rec = {id:uid(), title, date, term, venue, notes, academicYear:DB.settings.activeYear,
-    createdBy:currentUser.id, ts:Date.now()};
+    createdBy:currentUser.id, ts:Date.now(),
+    targetClasses:Array.from(document.getElementById('ptam-cls').selectedOptions).map(function(o){ return o.value; }), fine:parseFloat((document.getElementById('ptam-fine')||{}).value)||0, finesApplied:false};
   if (!DB.ptaMeetings) DB.ptaMeetings=[];
   DB.ptaMeetings.unshift(rec);
 
   try {
-    await sbPost('pta_meetings',{id:rec.id,title,meeting_date:date,term,academic_year:rec.academicYear,venue,notes,created_by:currentUser.id});
+    await sbPost('pta_meetings',{id:rec.id,title,meeting_date:date,term,academic_year:rec.academicYear,venue,notes,created_by:currentUser.id,target_classes:rec.targetClasses,fine_amount:rec.fine});
   } catch(e){ console.warn('pta_meetings write failed',e); }
   closeModal(); showToast('Meeting created ✓','success'); renderPTA();
 }
@@ -7523,7 +7623,8 @@ function openMarkAttendance(meetingId, meetingTitle) {
   var myClass = (currentUser.classes||[])[0]||'';
   var r = currentUser.role;
   var classStudents = DB.students.filter(function(s){
-    return s.status==='active' && (r==='admin' ? true : s.class===myClass);
+    var mt = (DB.ptaMeetings||[]).find(function(x){ return x.id===meetingId; });
+    return s.status==='active' && (!mt || !(mt.targetClasses||[]).length || mt.targetClasses.indexOf(s.class)>=0);
   });
   var existing = (DB.ptaAttendance||[]).filter(function(a){ return a.meetingId===meetingId; });
 
@@ -7533,7 +7634,7 @@ function openMarkAttendance(meetingId, meetingTitle) {
     +DB.classes.map(function(c){ return '<option>'+c+'</option>'; }).join('')
     +'</select></div>':'')
     +'<div id="ptaa-list">'
-    +classStudents.slice(0,100).map(function(s){
+    +classStudents.map(function(s){
       var att = existing.find(function(a){ return a.studentId===s.id; });
       return '<label style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--grayb);font-size:13px;cursor:pointer">'
         +'<input type="checkbox" value="'+s.id+'" data-name="'+s.name+'" data-class="'+s.class+'" class="ptaa-chk" '+(att&&att.parentAttended?'checked':'')+' style="width:16px;height:16px">'
@@ -7608,12 +7709,16 @@ syncFromSupabase = async function(silent) {
   // Load PTA meetings
   try {
     var pm = await sbGet('pta_meetings','select=*&order=meeting_date.desc');
-    if (pm&&pm.length) DB.ptaMeetings = pm.map(function(m){ return {id:m.id,title:m.title,date:m.meeting_date,term:m.term,venue:m.venue,notes:m.notes,academicYear:m.academic_year,createdBy:m.created_by}; });
+    if (pm&&pm.length) DB.ptaMeetings = pm.map(function(m){ return {id:m.id,title:m.title,date:m.meeting_date,term:m.term,venue:m.venue,notes:m.notes,academicYear:m.academic_year,createdBy:m.created_by,targetClasses:m.target_classes||[],fine:parseFloat(m.fine_amount)||0,finesApplied:!!m.fines_applied}; });
   } catch(e){}
   // Load PTA attendance
   try {
     var pa = await sbGet('pta_attendance','select=*&order=marked_at.desc&limit=10000');
     if (pa&&pa.length) DB.ptaAttendance = pa.map(function(a){ return {id:a.id,meetingId:a.meeting_id,studentId:a.student_id,studentName:a.student_name,class:a.class_name,parentAttended:a.parent_attended,markedBy:a.marked_by}; });
+  } catch(e){}
+  try {
+    var ch = await sbGet('student_charges','select=*&limit=10000');
+    if (ch) DB.charges = ch.map(function(c){ return {id:c.id,studentId:c.student_id,student:c.student_name,class:c.class_name,kind:c.kind,meetingId:c.meeting_id,amount:parseFloat(c.amount)||0,note:c.note,waived:!!c.waived}; });
   } catch(e){}
   // Load behaviour records
   try {
@@ -8256,7 +8361,7 @@ if (typeof renderLedger === 'function') {
 }
 
 // 3. Patch student detail modal to include GPA summary and report card button
-var _origOpenStudentDetail = openStudentDetail;
+var _origOpenStudentDetail = (typeof openStudentDetail === 'function') ? openStudentDetail : null;
 if (typeof openStudentDetail === 'function') {
   openStudentDetail = function(studentId) {
     _origOpenStudentDetail(studentId);
