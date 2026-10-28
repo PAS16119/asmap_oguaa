@@ -320,7 +320,7 @@ tr:hover td{background:#f9fafb;}
       <input type="password" id="lp" placeholder="Enter password" autocomplete="current-password">
     </div>
     <button class="btn btn-primary" onclick="doLogin()">Sign In →</button>
-    <p style="text-align:center;font-size:11px;color:var(--textm);margin-top:14px;">Adombra School Management &amp; Analytics Platform · v1.0 · build 24Oct-c</p>
+    <p style="text-align:center;font-size:11px;color:var(--textm);margin-top:14px;">Adombra School Management &amp; Analytics Platform · v1.0 · build 24Oct-d</p>
     <button onclick="testConnection()" style="width:100%;margin-top:8px;padding:8px;background:none;border:1px dashed #ccc;border-radius:8px;font-size:11px;color:#999;cursor:pointer;">🔌 Test Database Connection</button>
     <div id="conn-result" style="margin-top:8px;font-size:12px;text-align:center;display:none"></div>
     <div style="text-align:center;margin-top:10px;font-size:11px;color:#aaa">New school? <button onclick="showScreen('setup-screen')" style="background:none;border:none;color:var(--g3);cursor:pointer;font-size:11px;font-weight:600">First-time Setup →</button></div>
@@ -827,11 +827,17 @@ function initApp() {
   });
 }
 
+var _lastInput = 0;
+['input', 'change', 'keydown'].forEach(function(ev) {
+  document.addEventListener(ev, function(e) { var t = e.target; if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) _lastInput = Date.now(); }, true);
+});
 async function silentRefresh() {
   if (!currentUser) return;
   if (!(await ensureFreshToken())) { showToast('Session expired. Please sign in again.', 'warning'); doLogout(); return; }
   try {
     await syncFromSupabase(true);
+    var ae = document.activeElement;
+    if ((Date.now() - _lastInput) < 180000 || (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName))) return;
     const activeTab = document.querySelector('.ntab.active');
     const tabId = activeTab ? activeTab.id.replace('tab-','') : 'dashboard';
     // Never re-render approvals mid-session — user may have allocation inputs open
@@ -5649,7 +5655,7 @@ function renderSettings() {
 
   // App info
   html += '<div style="text-align:center;padding:16px;color:var(--textm);font-size:11px">'
-    + 'ASMaP \u00b7 Adombra School Management &amp; Analytics Platform \u00b7 v1.0<br>'
+    + 'ASMaP \u00b7 Adombra School Management &amp; Analytics Platform \u00b7 v1.0 · build 24Oct-d<br>'
     + s.schoolName + ' \u00b7 ' + s.schoolLocation + '</div>';
 
   el.innerHTML = html;
