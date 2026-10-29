@@ -320,10 +320,8 @@ tr:hover td{background:#f9fafb;}
       <input type="password" id="lp" placeholder="Enter password" autocomplete="current-password">
     </div>
     <button class="btn btn-primary" onclick="doLogin()">Sign In →</button>
-    <p style="text-align:center;font-size:11px;color:var(--textm);margin-top:14px;">Adombra School Management &amp; Analytics Platform · v1.0 · build 24Oct-d</p>
-    <button onclick="testConnection()" style="width:100%;margin-top:8px;padding:8px;background:none;border:1px dashed #ccc;border-radius:8px;font-size:11px;color:#999;cursor:pointer;">🔌 Test Database Connection</button>
+    <p style="text-align:center;font-size:11px;color:var(--textm);margin-top:14px;">Adombra School Management &amp; Analytics Platform · v1.0 · build 29Oct-a</p>
     <div id="conn-result" style="margin-top:8px;font-size:12px;text-align:center;display:none"></div>
-    <div style="text-align:center;margin-top:10px;font-size:11px;color:#aaa">New school? <button onclick="showScreen('setup-screen')" style="background:none;border:none;color:var(--g3);cursor:pointer;font-size:11px;font-weight:600">First-time Setup →</button></div>
   </div>
 </div>
 
@@ -5655,7 +5653,7 @@ function renderSettings() {
 
   // App info
   html += '<div style="text-align:center;padding:16px;color:var(--textm);font-size:11px">'
-    + 'ASMaP \u00b7 Adombra School Management &amp; Analytics Platform \u00b7 v1.0 · build 24Oct-d<br>'
+    + 'ASMaP \u00b7 Adombra School Management &amp; Analytics Platform \u00b7 v1.0 · build 29Oct-a<br>'
     + s.schoolName + ' \u00b7 ' + s.schoolLocation + '</div>';
 
   el.innerHTML = html;
@@ -6686,7 +6684,7 @@ function asmapSMS(payload) {
     body: JSON.stringify(payload)
   }).then(function(r) {
     return r.json().catch(function() { return {}; }).then(function(data) {
-      if (!r.ok || data.success === false) { data.success = false; showToast('SMS failed: ' + (data.error || ('HTTP ' + r.status)), 'error'); }
+      if (!r.ok || data.success === false) { data.success = false; showToast('SMS failed: ' + (data.error || ('HTTP ' + r.status)), 'error'); } else if (data.sandbox) { showToast('SMS is in TEST mode: messages are accepted but nothing is delivered to phones.', 'warning'); }
       var count = payload.bulk ? payload.bulk.length : (payload.recipients ? payload.recipients.length : 1);
       SMS_LOG.unshift({ ts: Date.now(), count: count, status: data.success ? 'sent' : 'failed', sandbox: data.sandbox });
       if (SMS_LOG.length > 100) SMS_LOG = SMS_LOG.slice(0, 100);
