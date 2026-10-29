@@ -320,7 +320,7 @@ tr:hover td{background:#f9fafb;}
       <input type="password" id="lp" placeholder="Enter password" autocomplete="current-password">
     </div>
     <button class="btn btn-primary" onclick="doLogin()">Sign In →</button>
-    <p style="text-align:center;font-size:11px;color:var(--textm);margin-top:14px;">Adombra School Management &amp; Analytics Platform · v1.0 · build 29Oct-a</p>
+    <p style="text-align:center;font-size:11px;color:var(--textm);margin-top:14px;">Adombra School Management &amp; Analytics Platform · v1.0 · build 29Oct-b</p>
     <div id="conn-result" style="margin-top:8px;font-size:12px;text-align:center;display:none"></div>
   </div>
 </div>
@@ -5653,7 +5653,7 @@ function renderSettings() {
 
   // App info
   html += '<div style="text-align:center;padding:16px;color:var(--textm);font-size:11px">'
-    + 'ASMaP \u00b7 Adombra School Management &amp; Analytics Platform \u00b7 v1.0 · build 29Oct-a<br>'
+    + 'ASMaP \u00b7 Adombra School Management &amp; Analytics Platform \u00b7 v1.0 · build 29Oct-b<br>'
     + s.schoolName + ' \u00b7 ' + s.schoolLocation + '</div>';
 
   el.innerHTML = html;
@@ -8905,52 +8905,57 @@ function downloadScoresTemplate() {
   toExcel(rows, 'ASMaP_Scores_Import_Template');
 }
 
+function _hk(k) { return String(k).toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+function _nm(v) { return String(v == null ? '' : v).replace(/\s+/g, ' ').trim().toUpperCase(); }
+function _nkey(name, cls) { return _nm(name).split(' ').filter(Boolean).sort().join(' ') + '|' + _nm(cls); }
+function _xdate(v) { if (typeof v === 'number' && v > 20000) return new Date(Math.round((v - 25569) * 86400000)).toISOString().slice(0, 10); return String(v == null ? '' : v).trim(); }
+var PROG_MAP = { 'APPLIED TECHNOLOGY': 'TECHNICAL', 'VISUAL AND PERFORMING ARTS': 'VISUAL ARTS', 'SCIENCE': 'GENERAL SCIENCE' };
 async function handleBulkStudentImport(evt) {
   var file = evt.target.files[0];
   if (!file) return;
   var reader = new FileReader();
   reader.onload = async function(e) {
     try {
-      var wb = XLSX.read(new Uint8Array(e.target.result), {type:'array'});
-      var rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {defval:''});
-      var imported=0, skipped=0, writes=[];
+      var wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+      var rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+      var added = 0, updated = 0, skipped = 0, writes = [], newCls = {}, index = {};
+      DB.students.forEach(function(s) { index[_nkey(s.name, s.class)] = s; });
+      var A = { name: ['FULLNAME', 'NAME', 'STUDENTNAME'], cls: ['CLASS'], form: ['FORM', 'LEVELFORM', 'LEVEL'], year: ['ADMISSIONYEAR', 'YEAROFADMISSION'], bece: ['BECEINDEX', 'INDEXNUMBER'],
+        surname: ['SURNAME'], first: ['OTHERNAMES'], dob: ['DATEOFBIRTHYYYYMMDD', 'DATEOFBIRTH', 'DOB'], gender: ['GENDERMALEFEMALE', 'GENDER', 'SEX'], nhis: ['NHISNUMBER', 'NHIS'],
+        house: ['HOUSE'], prog: ['PROGRAMME', 'LEARNINGAREA', 'STUDYAREA', 'PROGRAM'], res: ['RESIDENTIALSTATUSDAYBOARDING', 'RESIDENTIALSTATUS'], pf: ['PARENTFIRSTNAME'], pl: ['PARENTLASTNAME'],
+        phone: ['PARENTPHONE', 'PHONE', 'GUARDIANPHONE'], email: ['PARENTEMAIL'], town: ['HOMETOWN'], region: ['REGION'] };
       rows.forEach(function(row) {
-        var name = ((row['FULL NAME']||row['full name']||row['Name']||'')+'').trim().toUpperCase();
+        var h = {}; Object.keys(row).forEach(function(k) { h[_hk(k)] = row[k]; });
+        var pick = function(keys) { for (var i = 0; i < keys.length; i++) { var v = h[keys[i]]; if (v !== undefined && String(v).trim() !== '') return v; } return ''; };
+        var name = _nm(pick(A.name));
         if (!name) { skipped++; return; }
-        if (DB.students.find(function(s){ return s.name===name; })) { skipped++; return; }
-        var phone = ((row['PARENT PHONE']||row['parent phone']||'')+'').trim();
-        if (phone.startsWith('0')) phone = '+233'+phone.slice(1);
-        var s = {
-          id:uid(), name, class:((row['CLASS']||row['class']||'')+'').trim(),
-          form:((row['FORM']||row['form']||'SHS1')+'').trim().toUpperCase(),
-          admissionYear:((row['ADMISSION YEAR']||DB.settings.activeYear)+'').trim(),
-          status:'active',
-          beceIndex:((row['BECE INDEX']||row['INDEX NUMBER']||'')+'').trim(),
-          surname:((row['SURNAME']||'')+'').trim(),
-          firstNames:((row['OTHER NAMES']||'')+'').trim(),
-          dateOfBirth:((row['DATE OF BIRTH (YYYY-MM-DD)']||row['DATE OF BIRTH']||'')+'').trim(),
-          gender:((row['GENDER (Male/Female)']||row['GENDER']||'')+'').trim(),
-          nhisNumber:((row['NHIS NUMBER']||row['NHIS']||'')+'').trim(),
-          house:((row['HOUSE']||'')+'').trim().toUpperCase(),
-          programme:((row['PROGRAMME']||'')+'').trim().toUpperCase(),
-          residentialStatus:((row['RESIDENTIAL STATUS (Day/Boarding)']||row['RESIDENTIAL STATUS']||'Day')+'').trim(),
-          parentFirstName:((row['PARENT FIRST NAME']||'')+'').trim(),
-          parentLastName:((row['PARENT LAST NAME']||'')+'').trim(),
-          parentPhone:phone,
-          parentEmail:((row['PARENT EMAIL']||'')+'').trim(),
-          hometown:((row['HOMETOWN']||'')+'').trim(),
-          region:((row['REGION']||'')+'').trim(),
-          ts:Date.now()
-        };
-        DB.students.push(s);
-        writes.push(supabaseUpsertStudent(s));
-        imported++;
+        var cls = String(pick(A.cls)).trim(), fm = _nm(pick(A.form)), dg = fm.match(/\d/);
+        var phone = String(pick(A.phone)).replace(/[^0-9+]/g, '');
+        if (phone.charAt(0) === '0') phone = '+233' + phone.slice(1); else if (phone.indexOf('233') === 0) phone = '+' + phone;
+        var prog = _nm(pick(A.prog)); prog = PROG_MAP[prog] || prog;
+        var f = { class: cls, form: dg ? 'SHS' + dg[0] : fm, admissionYear: String(pick(A.year)).trim(), beceIndex: String(pick(A.bece)).trim(), surname: String(pick(A.surname)).trim(), firstNames: String(pick(A.first)).trim(),
+          dateOfBirth: _xdate(pick(A.dob)), gender: String(pick(A.gender)).trim(), nhisNumber: String(pick(A.nhis)).trim(), house: _nm(pick(A.house)), programme: prog, residentialStatus: String(pick(A.res)).trim(),
+          parentFirstName: String(pick(A.pf)).trim(), parentLastName: String(pick(A.pl)).trim(), parentPhone: phone, parentEmail: String(pick(A.email)).trim(), hometown: String(pick(A.town)).trim(), region: String(pick(A.region)).trim() };
+        var key = _nkey(name, cls), s = index[key];
+        if (s) {
+          var changed = false;
+          Object.keys(f).forEach(function(k) { if (f[k] && !s[k]) { s[k] = f[k]; changed = true; } });
+          if (changed) { updated++; writes.push(supabaseUpsertStudent(s)); } else skipped++;
+        } else {
+          s = { id: uid(), name: name, status: 'active', ts: Date.now() };
+          Object.keys(f).forEach(function(k) { s[k] = f[k]; });
+          if (!s.form) s.form = 'SHS1'; if (!s.admissionYear) s.admissionYear = DB.settings.activeYear; if (!s.residentialStatus) s.residentialStatus = 'Day';
+          DB.students.push(s); index[key] = s; writes.push(supabaseUpsertStudent(s)); added++;
+        }
+        if (cls) newCls[cls] = 1;
       });
       await Promise.allSettled(writes);
-      showToast('Imported '+imported+' students'+(skipped?' ('+skipped+' skipped)':''),'success');
-      audit('BULK_IMPORT_STUDENTS', imported+' students', 'students');
+      var fresh = Object.keys(newCls).filter(function(c) { return DB.classes.indexOf(c) < 0; });
+      if (fresh.length) { fresh.forEach(function(c) { DB.classes.push(c); }); await saveDB(); }
+      showToast('Added ' + added + ', updated ' + updated + ' (blank fields filled), ' + skipped + ' unchanged', 'success');
+      audit('BULK_IMPORT_STUDENTS', added + ' added, ' + updated + ' updated', 'students');
       renderManage();
-    } catch(ex) { showToast('Import error: '+ex.message,'error'); }
+    } catch (ex) { showToast('Import error: ' + ex.message, 'error'); }
   };
   reader.readAsArrayBuffer(file);
 }
