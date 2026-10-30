@@ -320,7 +320,7 @@ tr:hover td{background:#f9fafb;}
       <input type="password" id="lp" placeholder="Enter password" autocomplete="current-password">
     </div>
     <button class="btn btn-primary" onclick="doLogin()">Sign In →</button>
-    <p style="text-align:center;font-size:11px;color:var(--textm);margin-top:14px;">Adombra School Management &amp; Analytics Platform · v1.0 · build 29Oct-c</p>
+    <p style="text-align:center;font-size:11px;color:var(--textm);margin-top:14px;">Adombra School Management &amp; Analytics Platform · v1.0 · build 30Oct-a</p>
     <div id="conn-result" style="margin-top:8px;font-size:12px;text-align:center;display:none"></div>
   </div>
 </div>
@@ -5653,7 +5653,7 @@ function renderSettings() {
 
   // App info
   html += '<div style="text-align:center;padding:16px;color:var(--textm);font-size:11px">'
-    + 'ASMaP \u00b7 Adombra School Management &amp; Analytics Platform \u00b7 v1.0 · build 29Oct-c<br>'
+    + 'ASMaP \u00b7 Adombra School Management &amp; Analytics Platform \u00b7 v1.0 · build 30Oct-a<br>'
     + s.schoolName + ' \u00b7 ' + s.schoolLocation + '</div>';
 
   el.innerHTML = html;
@@ -6056,6 +6056,7 @@ async function importTimetable(inp) {
   try {
     var d = JSON.parse(await f.text());
     if (!d.slots || !d.teachers || !d.classes) throw new Error('this is not a timetable file');
+    if (TT) { if (TT.classMap) d.classMap = TT.classMap; if (TT.classJoin) d.classJoin = TT.classJoin; }
     await _saveTimetable(d);
     audit('IMPORT_TIMETABLE', d.slots.length + ' lessons', 'timetable');
     showToast('Timetable imported', 'success');
@@ -6064,6 +6065,11 @@ async function importTimetable(inp) {
 }
 async function assignTeacher(i, id) {
   if (!id || currentUser.role !== 'admin') return;
+  if (String(id).indexOf('new:') === 0) {
+    var nm = id.slice(4), ex = TT.teachers.find(function(t) { return String(t.n).toUpperCase() === nm.toUpperCase(); });
+    if (!ex) { ex = { id: 'm_' + uid(), n: nm, s: nm }; TT.teachers.push(ex); TT_IDX.t[ex.id] = ex; }
+    id = ex.id;
+  }
   TT.slots[i].t = [id]; delete TT.slots[i].c;
   try { await _saveTimetable(TT); showToast('Teacher set', 'success'); } catch (e) { showToast(e.message, 'error'); }
 }
@@ -6274,6 +6280,7 @@ async function lessonRecord(keepSel, keepDate) {
   } catch (e) {}
   var wd = new Date(dt + 'T12:00:00').getDay(), now = new Date(), nm = now.getHours() * 60 + now.getMinutes(), lastTot = '';
   try { lastTot = localStorage.getItem('lsnTot_' + sel) || ''; } catch (e) {}
+  var cs = _classSize(sel); if (cs) lastTot = String(cs);
   var teachers = TT.teachers.map(function(t) { return '<option value="' + t.id + '">' + _x(t.n) + '</option>'; }).join('');
   var o = function(list, cur) { return list.map(function(a) { return '<option value="' + a[0] + '"' + (String(cur) === String(a[0]) ? ' selected' : '') + '>' + a[1] + '</option>'; }).join(''); };
   _lsnRows = [];
@@ -6287,7 +6294,7 @@ async function lessonRecord(keepSel, keepDate) {
     real.forEach(function(a) {
       var s = a[0], i = a[1], rec = recs[s.p + '|' + s.sub] || {}, st = ({ late: 'present', no_lesson: 'not_held', cover: 'absent' })[rec.status] || rec.status || '';
       var locked = !admin && dt === todayStr() && pd.s && _tm(pd.s) > nm, dis = locked ? ' disabled' : '';
-      var tn = s.t && s.t.length ? s.t.map(_tName).join(' / ') : (admin ? '<select onchange="assignTeacher(' + i + ',this.value)"><option value="">Set teacher</option>' + (s.c && s.c.length ? s.c : TT.teachers.map(function(t) { return t.id; })).map(function(id) { return '<option value="' + id + '">' + _x(TT_IDX.t[id].n) + '</option>'; }).join('') + '</select>' : 'Teacher not set');
+      var tn = s.t && s.t.length ? s.t.map(_tName).join(' / ') : (admin ? '<select onchange="assignTeacher(' + i + ',this.value)"><option value="">Set teacher</option>' + _extraTeacherOpts() + (s.c && s.c.length ? s.c : TT.teachers.map(function(t) { return t.id; })).map(function(id) { return '<option value="' + id + '">' + _x(TT_IDX.t[id].n) + '</option>'; }).join('') + '</select>' : 'Teacher not set');
       _lsnRows.push(i);
       h += '<div class="card" style="padding:10px;margin-bottom:8px' + (locked ? ';opacity:.5' : '') + '"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><strong>' + head + ' · ' + _x(TT_IDX.s[s.sub].n) + (p === 9 ? ' <small>(Extended teaching)</small>' : '') + '</strong><span>' + tn + '</span></div>'
         + '<div style="margin-top:8px"><select id="xs-' + i + '" onchange="llToggle(' + i + ')"' + dis + '>' + o([['', 'Select'], ['present', 'Teacher present'], ['absent', 'Teacher absent'], ['not_held', 'Lesson not held']], st) + '</select></div>'
@@ -6409,13 +6416,18 @@ function lessonClasses(form) {
     + '<div class="card" style="padding:10px;font-size:12px;margin-bottom:8px">Match each timetable class to the class code used for students. After you save, the Lesson Log, Attendance and prefects all use the same codes.</div>'
     + _clsList().map(function(c) {
       var cur = TT.classMap[c.id] || (function() { var g = _autoCode(c.n); var b = g.replace(/\d+[A-Z]?$/, ''); return codes.indexOf(g) >= 0 ? g : (codes.indexOf(g + 'A') >= 0 ? g + 'A' : (g && codes.indexOf(b) >= 0 ? b : '')); })();
-      return '<div style="display:flex;gap:8px;align-items:center;padding:5px 0;border-bottom:1px solid var(--grayb)"><span style="flex:1">' + _x(c.n) + '</span><select id="cm-' + c.id + '"><option value="">Not matched</option>' + codes.map(function(k) { return '<option' + (k === cur ? ' selected' : '') + '>' + _x(k) + '</option>'; }).join('') + '</select><small style="width:90px">' + (pref[c.id] ? 'prefect: ' + _x(pref[c.id]) : 'no prefect') + '</small></div>';
+      return '<div style="display:flex;gap:8px;align-items:center;padding:5px 0;border-bottom:1px solid var(--grayb)"><span style="flex:1">' + _x(c.n) + '</span><input id="cj-' + c.id + '" placeholder="also includes (e.g. 3LANG2)" value="' + _x(((TT.classJoin || {})[c.id] || _joinHint(cur)).join(', ')) + '" style="width:150px"><select id="cm-' + c.id + '"><option value="">Not matched</option>' + codes.map(function(k) { return '<option' + (k === cur ? ' selected' : '') + '>' + _x(k) + '</option>'; }).join('') + '</select><small style="width:90px">' + (pref[c.id] ? 'prefect: ' + _x(pref[c.id]) : 'no prefect') + '</small></div>';
     }).join('');
 }
 async function saveClassMap(toast) {
   TT.classMap = TT.classMap || {};
-  _clsList().forEach(function(c) { var v = (document.getElementById('cm-' + c.id) || {}).value; if (v) TT.classMap[c.id] = v; else delete TT.classMap[c.id]; });
-  try { await _saveTimetable(TT); if (toast) showToast('Class matching saved', 'success'); return true; } catch (e) { showToast(e.message, 'error'); return false; }
+  TT.classJoin = TT.classJoin || {};
+  _clsList().forEach(function(c) {
+    var v = (document.getElementById('cm-' + c.id) || {}).value; if (v) TT.classMap[c.id] = v; else delete TT.classMap[c.id];
+    var j = ((document.getElementById('cj-' + c.id) || {}).value || '').split(',').map(function(x) { return x.trim().toUpperCase(); }).filter(function(x) { return x && DB.classes.indexOf(x) >= 0 && x !== v; });
+    if (j.length) TT.classJoin[c.id] = j; else delete TT.classJoin[c.id];
+  });
+  try { await _saveTimetable(TT); await _deriveClasses(); if (toast) showToast('Class matching saved. Class lists updated everywhere.', 'success'); return true; } catch (e) { showToast(e.message, 'error'); return false; }
 }
 async function createPrefects() {
   if (!(await saveClassMap(false))) return;
@@ -6445,6 +6457,26 @@ function tidyClasses() {
   showConfirm('Make class lists match', 'The class list used everywhere (Attendance, Payments and so on) will become these ' + next.length + ' classes: the ones students are in plus the ones you matched. Continue?', async function() {
     DB.classes = next; await saveDB(); audit('TIDY_CLASSES', next.length + ' classes', 'settings'); showToast('Class list updated', 'success');
   }, 'Update list', 'btn-primary');
+}
+
+
+var JOIN_HINTS = { '3LANG1': ['3LANG2'], '3SCI2': ['3SCI3'], '3TECH2A': ['3TECH2B'], '3VIS2A': ['3VIS2B'] };
+function _joinHint(code) { return (JOIN_HINTS[code] || []).filter(function(x) { return DB.classes.indexOf(x) >= 0; }); }
+function _classSize(id) {
+  if (!TT || !TT.classMap || !TT.classMap[id]) return 0;
+  var codes = [TT.classMap[id]].concat((TT.classJoin || {})[id] || _joinHint(TT.classMap[id]));
+  return DB.students.filter(function(st) { return st.status !== 'graduated' && codes.indexOf(st.class) >= 0; }).length;
+}
+function _extraTeacherOpts() {
+  var have = {}; TT.teachers.forEach(function(t) { have[String(t.n).toUpperCase()] = 1; });
+  return DB.teachers.filter(function(n) { return !have[String(n).toUpperCase()]; }).map(function(n) { return '<option value="new:' + _x(n) + '">' + _x(n) + ' (added in Manage)</option>'; }).join('');
+}
+async function _deriveClasses() {
+  var set = {}; DB.students.forEach(function(st) { if (st.class && st.status !== 'graduated') set[st.class] = 1; });
+  Object.keys(TT.classMap || {}).forEach(function(k) { set[TT.classMap[k]] = 1; });
+  Object.keys(TT.classMap || {}).forEach(function(k) { ((TT.classJoin || {})[k] || _joinHint(TT.classMap[k])).forEach(function(c) { set[c] = 1; }); });
+  var next = Object.keys(set).sort();
+  if (next.length) { DB.classes = next; await saveDB(); }
 }
 
 function loadStandardPeriods() {
