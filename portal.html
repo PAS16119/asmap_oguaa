@@ -338,8 +338,17 @@ async function showReport(s,viewNum,extra){
 
   h+='<div class="pcard"><div class="pct">💰 Payment History</div>';
   if(!pays.length){h+='<div style="text-align:center;padding:16px;color:var(--textm);font-size:13px">No confirmed payments yet.</div>';}
-  else{h+='<div class="twrap"><table><tr><th>Date</th><th>GHS</th><th>Purpose</th></tr>'+pays.map(function(p){return'<tr><td>'+(p.date||'')+'</td><td><strong>'+parseFloat(p.raw_amount||p.amount||0).toLocaleString()+'</strong></td><td><span class="badge bg">'+(p.purpose||'General')+'</span></td></tr>';}).join('')+'</table></div>';}
+  else{h+='<div class="twrap"><table><tr><th>Date</th><th>GHS</th><th>Purpose</th></tr>'+pays.map(function(p){return'<tr><td>'+(p.date||'')+'</td><td><strong>'+parseFloat(p.raw_amount||p.amount||0).toLocaleString()+'</strong></td><td>'+((p.allocations&&p.allocations.length)?p.allocations.map(function(a){return'<span class="badge bg" style="margin:1px">'+a.purpose+' · GHS '+parseFloat(a.amount||0).toLocaleString()+'</span>';}).join(' '):'<span class="badge" style="background:#fff3cd;color:#856404">'+(p.purpose||'Awaiting allocation by the school')+'</span>')+'</td></tr>';}).join('')+'</table></div>';}
   h+='</div>';
+
+  var fines=(extra&&extra.fines)||[],arrears=(extra&&extra.arrears)||0;
+  if(fines.length||arrears>0){
+    var ftot=fines.reduce(function(a,f){return a+parseFloat(f.amount||0);},0);
+    h+='<div class="pcard"><div class="pct">⚠️ Other amounts owing</div>'
+      +(arrears>0?'<div style="font-size:13px;padding:6px 0;border-bottom:1px solid var(--grayb)">Balance brought forward from last year: <strong>GHS '+parseFloat(arrears).toLocaleString()+'</strong></div>':'')
+      +fines.map(function(f){return'<div style="font-size:13px;padding:6px 0;border-bottom:1px solid var(--grayb)">'+(f.note||'Fine')+': <strong>GHS '+parseFloat(f.amount||0).toLocaleString()+'</strong></div>';}).join('')
+      +'<div style="font-size:11px;color:var(--textm);margin-top:8px">Please pay at the school office. Amounts may be reduced if the school waives a fine.</div></div>';
+  }
 
   if(ptaTotal>0){
     h+='<div class="pcard"><div class="pct">👥 PTA Attendance</div>'

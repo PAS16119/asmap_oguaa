@@ -40,8 +40,16 @@ Deno.serve(async (req) => {
       if (!s) return out({ student: null });
       const { data: pays } = await sb.from('payments').select('*').eq('student_name', s.full_name).eq('class_name', s.class_name || '').eq('approval_status', 'confirmed').order('date', { ascending: false });
       const { data: pta } = await sb.from('pta_attendance').select('parent_attended').eq('student_id', s.id);
-      const payments = (pays || []).map((p: Record<string, unknown>) => { const c = { ...p }; PAY_HIDE.forEach((k) => delete c[k]); return c; });
-      return out({ student: pick(s, FULL), payments, pta: { total: (pta || []).length, attended: (pta || []).filter((x: { parent_attended: boolean }) => x.parent_attended).length } });
+      const ids = (pays || []).map((p: Record<string, unknown>) => p.id);
+      const { data: als } = ids.length ? await sb.from('payment_allocations').select('payment_id,purpose,amount').in('payment_id', ids) : { data: [] };
+      const { data: chg } = await sb.from('student_charges').select('id,amount,note,kind').eq('student_id', s.id).eq('waived', false);
+      const { data: cfg } = await sb.from('app_config').select('pay_settings').eq('key', 'main').maybeSingle();
+      const ps = ((cfg && cfg.pay_settings) || {}) as { arrears?: Record<string, number>; carriedFines?: string[] };
+      const carried = ps.carriedFines || [];
+      const fines = (chg || []).filter((c: { id: string }) => !carried.includes(c.id)).map((c: { amount: number; note: string }) => ({ amount: c.amount, note: c.note }));
+      const arrears = Number((ps.arrears || {})[s.id]) || 0;
+      const payments = (pays || []).map((p: Record<string, unknown>) => { const c: Record<string, unknown> = { ...p }; PAY_HIDE.forEach((k) => delete c[k]); c.allocations = (als || []).filter((a: { payment_id: unknown }) => a.payment_id === p.id).map((a: { purpose: string; amount: number }) => ({ purpose: a.purpose, amount: a.amount })); return c; });
+      return out({ student: pick(s, FULL), payments, fines, arrears, pta: { total: (pta || []).length, attended: (pta || []).filter((x: { parent_attended: boolean }) => x.parent_attended).length } });
     }
     return out({ error: 'bad_request' }, 400);
   } catch (e) { return out({ error: 'server' }, 500); }

@@ -320,7 +320,7 @@ tr:hover td{background:#f9fafb;}
       <input type="password" id="lp" placeholder="Enter password" autocomplete="current-password">
     </div>
     <button class="btn btn-primary" onclick="doLogin()">Sign In →</button>
-    <p style="text-align:center;font-size:11px;color:var(--textm);margin-top:14px;">Adombra School Management &amp; Analytics Platform · v1.0 · build 30Oct-b</p>
+    <p style="text-align:center;font-size:11px;color:var(--textm);margin-top:14px;">Adombra School Management &amp; Analytics Platform · v1.0 · build 30Oct-d</p>
     <div id="conn-result" style="margin-top:8px;font-size:12px;text-align:center;display:none"></div>
   </div>
 </div>
@@ -2978,6 +2978,7 @@ function renderLedger() {
   html += '</table></div>'
     + '<div style="margin-top:10px;display:flex;gap:8px">'
     + '<button class="btn btn-outline btn-sm" onclick="exportLedgerClass(\'' + ledgerSelectedClass + '\')">&#11015; Export ' + ledgerSelectedClass + '</button>'
+    + '<button class="btn btn-primary btn-sm" onclick="openDefaulters(\'' + ledgerSelectedClass + '\')">Who owes</button>'
     + (r==='admin' ? '<button class="btn btn-outline btn-sm" onclick="exportLedgerAll()">&#11015; Export All Classes</button>' : '')
     + '</div>';
 
@@ -3082,6 +3083,11 @@ function printReceipt(id) {
     return true;
   });
 
+  if (currentUser && currentUser.role === 'coordinator') {
+    var _vis = visiblePurposes(), _other = 0;
+    allocs = allocs.filter(function(a){ if (_vis.indexOf(a.purpose) >= 0) return true; _other += a.amount; return false; });
+    if (_other > 0) allocs.push({purpose:'Other school fees', amount:_other});
+  }
   // Build allocation table rows
   var allocRows = '';
   // Always show ET even if only allocation is other purposes (it's auto-allocated)
@@ -3098,6 +3104,19 @@ function printReceipt(id) {
     if (total > getETAmountFromPayments([p])) allocRows += '<tr><td style="padding:4px 8px">Unallocated</td><td style="padding:4px 8px;text-align:right">GHS ' + (total-getETAmountFromPayments([p])) + '</td></tr>';
   }
 
+  if (allocs.length > 0 && p.unallocated > 0 && p.approvalStatus === 'confirmed') allocRows += '<tr><td style="padding:4px 8px;color:#856404">Awaiting allocation by the school</td><td style="padding:4px 8px;text-align:right;color:#856404">GHS ' + p.unallocated + '</td></tr>';
+  var isAdminR = currentUser && currentUser.role === 'admin';
+  var bal = getStudentBalance(p.student, p.class), dueAll = studentDue(p.student, p.class);
+  var paidAll = DB.payments.filter(function(q){ return q.student===p.student && q.class===p.class && q.approvalStatus==='confirmed'; }).reduce(function(t,q){ return t+(q.rawAmount||q.amount); }, 0);
+  var stCls = 'paid', stTxt = 'PAYMENT CONFIRMED';
+  if (p.approvalStatus !== 'confirmed') { stCls = 'partial'; stTxt = 'PENDING APPROVAL'; }
+  else if (p.unallocated > 0) { stCls = 'partial'; stTxt = 'AWAITING ALLOCATION'; }
+  else if (isAdminR && bal > 0) { stCls = 'partial'; stTxt = 'PART PAYMENT'; }
+  else if (isAdminR) { stTxt = 'PAID IN FULL'; }
+  var acctHtml = isAdminR ? ('<h3>Account position</h3><table>'
+    + '<tr><td style="padding:3px 8px;color:#555">Total fees this year</td><td style="padding:3px 8px;text-align:right">GHS ' + _r2(dueAll) + '</td></tr>'
+    + '<tr><td style="padding:3px 8px;color:#555">Paid to date (confirmed)</td><td style="padding:3px 8px;text-align:right">GHS ' + _r2(paidAll) + '</td></tr>'
+    + '<tr class="total-row"><td style="padding:5px 8px">BALANCE OUTSTANDING</td><td style="padding:5px 8px;text-align:right">GHS ' + _r2(bal) + '</td></tr></table>') : '';
   var installRows = installs.map(function(i){
     return '<tr><td style="padding:3px 8px">' + i.date + '</td><td style="padding:3px 8px;text-align:right">GHS ' + i.amount + '</td><td style="padding:3px 8px;color:#666">' + (i.recordedByName||'') + '</td></tr>';
   }).join('');
@@ -3124,9 +3143,10 @@ function printReceipt(id) {
     + '<table>' + allocRows
     + '<tr class="total-row"><td style="padding:6px 8px">TOTAL PAID</td><td style="padding:6px 8px;text-align:right">GHS ' + total + '</td></tr>'
     + '</table>'
+    + acctHtml
     + (installs.length > 1 ? ('<h3>Payment History (' + installs.length + ' instalments)</h3><table><tr style="background:#f5f5f5"><th style="padding:4px 8px;text-align:left">Date</th><th style="padding:4px 8px;text-align:right">Amount</th><th style="padding:4px 8px">Recorded by</th></tr>' + installRows + '</table>') : '')
     + '<div style="margin-top:16px;padding:10px;background:#f9f9f9;border-radius:6px;font-size:11px;color:#666;text-align:center">'
-    + 'Status: <span class="badge ' + (p.unallocated>0?'partial':'paid') + '">' + (p.unallocated>0?'PARTIAL PAYMENT':'PAID') + '</span><br>'
+    + 'Status: <span class="badge ' + stCls + '">' + stTxt + '</span><br>'
     + 'Recorded by: ' + (p.recordedByName||'Admin') + ' &bull; Academic Year: ' + (DB.settings.activeYear||'') + '<br>'
     + 'Printed: ' + new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'})
     + '</div>'
@@ -5437,7 +5457,7 @@ function renderSettings() {
 
   // App info
   html += '<div style="text-align:center;padding:16px;color:var(--textm);font-size:11px">'
-    + 'ASMaP \u00b7 Adombra School Management &amp; Analytics Platform \u00b7 v1.0 · build 30Oct-b<br>'
+    + 'ASMaP \u00b7 Adombra School Management &amp; Analytics Platform \u00b7 v1.0 · build 30Oct-d<br>'
     + s.schoolName + ' \u00b7 ' + s.schoolLocation + '</div>';
 
   el.innerHTML = html;
@@ -5648,6 +5668,8 @@ function submitAdmissionItems(yearId) {
 
 function openYearRollover() {
   var activeYear = DB.settings.activeYear || '';
+  var _pend = DB.payments.filter(function(p){ return p.approvalStatus === 'pending'; }).length, _cf = 0, _cfn = 0;
+  DB.students.forEach(function(st){ if (st.status === 'active') { var b = getStudentBalance(st.name, st.class); if (b > 0.009) { _cf += b; _cfn++; } } });
   var shs3 = DB.students.filter(function(s){ return s.form === 'SHS3' && s.status === 'active'; });
   var shs2 = DB.students.filter(function(s){ return s.form === 'SHS2' && s.status === 'active'; });
   var shs1 = DB.students.filter(function(s){ return s.form === 'SHS1' && s.status === 'active'; });
@@ -5661,6 +5683,8 @@ function openYearRollover() {
     + '<div style="padding:8px 0;border-bottom:1px solid var(--grayb)">⬆️ <strong>'+shs1.length+' SHS1 students</strong> → promoted to SHS2</div>'
     + '<div style="padding:8px 0">🆕 New SHS1 will be registered through the Admission tab</div>'
     + '</div>'
+    + (_pend ? '<div style="background:var(--redp);border-radius:8px;padding:10px;margin-bottom:10px;font-size:12px;color:var(--red)">⚠️ ' + _pend + ' payment(s) are still pending approval. Approve or reject them first, or they will not count towards balances.</div>' : '')
+    + '<div style="background:var(--goldp);border-radius:8px;padding:10px;margin-bottom:10px;font-size:12px">💼 <strong>' + _cfn + ' students</strong> still owe <strong>GHS ' + _r2(_cf) + '</strong> (including PTA fines). When you archive below, each balance is carried into the new year as <strong>Arrears</strong>, and payments they make later can be allocated to it.</div>'
     + '<div class="fgrp"><label>NEW ACADEMIC YEAR NAME</label>'
     + '<input type="text" id="new-year-name" placeholder="e.g. 2025/2026" value=""></div>'
         + '<label style="display:flex;gap:8px;align-items:center;font-size:13px;margin:10px 0"><input type="checkbox" id="rollover-archive" checked> Archive this year\'s records and clear them for the new year</label>'
@@ -5675,7 +5699,15 @@ async function executeYearRollover() {
     showToast('Year already exists','error'); return;
   }
   if (document.getElementById('rollover-archive') && document.getElementById('rollover-archive').checked) {
+    // Work out who owes BEFORE the payments are archived and cleared
+    var arr = Object.assign({}, (DB.paySettings && DB.paySettings.arrears) || {}), nCar = 0, tCar = 0;
+    DB.students.forEach(function(st) { if (st.status !== 'active') return; var b = getStudentBalance(st.name, st.class); if (b > 0.009) { arr[st.id] = _r2(b); nCar++; tCar += b; } else delete arr[st.id]; });
+    var fineIds = (DB.charges || []).filter(function(c) { return !c.waived; }).map(function(c) { return c.id; });
     if (!(await archiveAndClearYear(getActiveYear() ? getActiveYear().name : DB.settings.activeYear))) return;
+    DB.paySettings.arrears = arr;
+    DB.paySettings.carriedFines = ((DB.paySettings.carriedFines) || []).concat(fineIds);
+    ensureSpecialPurposes();
+    audit('CARRY_ARREARS', nCar + ' students carry GHS ' + _r2(tCar) + ' into the new year', 'settings');
   }
   showToast('Running rollover…','warning');
   var batchUpdates = [];
@@ -6171,7 +6203,7 @@ async function applyPTAFines(meetingId) {
       if (!(await sbPatch('pta_meetings', meetingId, { fines_applied: true }))) throw new Error('could not mark the meeting');
       m.finesApplied = true; if (!DB.charges) DB.charges = [];
       rows.forEach(function(x) { DB.charges.push({ id: x.id, studentId: x.student_id, student: x.student_name, class: x.class_name, kind: x.kind, meetingId: x.meeting_id, amount: x.amount, note: x.note, waived: false }); });
-      audit('PTA_FINES', m.title + ': ' + absent.length + ' fines', 'pta_meetings', meetingId); showToast(absent.length + ' fines applied', 'success'); renderPTA();
+      ensureSpecialPurposes(); audit('PTA_FINES', m.title + ': ' + absent.length + ' fines', 'pta_meetings', meetingId); showToast(absent.length + ' fines applied', 'success'); renderPTA();
     } catch (e) { showToast('Could not apply fines: ' + e.message, 'error'); }
   }, 'Apply fines', 'btn-primary');
 }
@@ -6583,7 +6615,25 @@ function _stuForm(name, cls) {
   var st = _stuObj(name, cls); var f = String((st && st.form) || '').match(/\d/); return f ? f[0] : '';
 }
 function feeRuleFor(purpose) { var fr = (DB.paySettings && DB.paySettings.feeRules) || {}; return fr[purpose] || null; }
+var _SPECIAL = ['Arrears', 'PTA Fines'];
+function arrearsOf(name, cls) { var a = (DB.paySettings && DB.paySettings.arrears) || {}, st = _stuObj(name, cls); return st ? (Number(a[st.id]) || 0) : 0; }
+function finesOf(name, cls) {
+  var st = _stuObj(name, cls), carried = (DB.paySettings && DB.paySettings.carriedFines) || [];
+  return (DB.charges || []).filter(function(c) {
+    if (c.waived || carried.indexOf(c.id) >= 0) return false;
+    return c.studentId ? (st && c.studentId === st.id) : (c.student === name && c.class === cls);
+  }).reduce(function(t, c) { return t + (Number(c.amount) || 0); }, 0);
+}
+function ensureSpecialPurposes() {
+  var add = function(n) { if (!DB.purposes.find(function(p) { return p.name === n; })) DB.purposes.push({ id: uid(), name: n, expected: 0 }); };
+  var carried = (DB.paySettings && DB.paySettings.carriedFines) || [];
+  if ((DB.charges || []).some(function(c) { return !c.waived && carried.indexOf(c.id) < 0; })) add('PTA Fines');
+  var a = (DB.paySettings && DB.paySettings.arrears) || {};
+  if (Object.keys(a).some(function(k) { return Number(a[k]) > 0; })) add('Arrears');
+}
 function feeDue(name, cls, purpose) {
+  if (purpose === 'Arrears') return arrearsOf(name, cls);
+  if (purpose === 'PTA Fines') return finesOf(name, cls);
   var pp = DB.purposes.find(function(p) { return p.name === purpose; });
   var legacy = purpose === 'Extended Teaching' ? (DB.paySettings.etAmount || 500) : (pp ? (Number(pp.expected) || 0) : 0);
   var r = feeRuleFor(purpose);
@@ -6642,7 +6692,7 @@ function getStudentBalance(studentName, className) {
     return p.student === studentName && p.class === className && p.approvalStatus === 'confirmed';
   }).reduce(function(t, p) { return t + (p.rawAmount || p.amount); }, 0);
   var expected = studentDue(studentName, className);
-  var fines = (DB.charges || []).filter(function(c) { return c.student === studentName && c.class === className && !c.waived; }).reduce(function(a, c) { return a + c.amount; }, 0);
+  var fines = DB.purposes.some(function(p) { return p.name === 'PTA Fines'; }) ? 0 : finesOf(studentName, className);
   return Math.max(0, expected + fines - paid);
 }
 function _readAllocInputs(id, edit) {
@@ -6825,6 +6875,7 @@ function feeScheduleCardHtml() {
   _feeInit();
   var cp = _payCoordPurposes();
   var rows = DB.purposes.map(function(pp, i) {
+    if (_SPECIAL.indexOf(pp.name) >= 0) return '';
     var r = _feeRule(pp.name);
     var n = r.scope === 'selected' ? (r.include || []).length + ' chosen' : ((r.exclude || []).length ? (r.exclude || []).length + ' exempt' : 'everyone');
     return '<div style="border:1px solid var(--grayb);border-radius:8px;padding:10px;margin-bottom:8px">'
@@ -6849,6 +6900,7 @@ function feeScheduleCardHtml() {
 function _feeRead() {
   _feeInit();
   DB.purposes.forEach(function(pp, i) {
+    if (_SPECIAL.indexOf(pp.name) >= 0) return;
     var r = _feeRule(pp.name);
     ['1', '2', '3'].forEach(function(f) { var el = document.getElementById('fs-' + i + '-' + f); if (el) { var v = el.value.trim(); r.form[f] = v === '' ? '' : Number(v); } });
     var sc = document.getElementById('fs-' + i + '-scope'); if (sc) r.scope = sc.value;
@@ -6897,6 +6949,47 @@ function runPayReconcile() {
   });
   openModal('Payment check', '<div style="font-size:13px">Confirmed payments: <strong>GHS ' + _r2(totalIn) + '</strong><br>Allocated: <strong>GHS ' + _r2(totalAl) + '</strong><br>Unallocated: <strong>GHS ' + _r2(totalUn) + '</strong><br><br>'
     + (bad.length ? '<span style="color:var(--red)">⚠ ' + bad.length + ' payment(s) do not add up:</span><br>' + bad.slice(0, 25).map(_x).join('<br>') : '<span style="color:var(--g2)">✓ Everything adds up.</span>') + '</div>');
+}
+// ---- Who owes: every student with an outstanding balance, from the fee schedule
+function _defaulterRows(cls) {
+  var purposes = visiblePurposes(), out = [];
+  function add(st, c) {
+    var pays = DB.payments.filter(function(p) { return p.student === st.name && p.class === c && p.approvalStatus === 'confirmed'; });
+    var ids = pays.map(function(p) { return p.id; }), byPur = {};
+    purposes.forEach(function(pu) { byPur[pu] = 0; });
+    (DB.allocations || []).forEach(function(a) { if (ids.indexOf(a.paymentId) >= 0 && byPur.hasOwnProperty(a.purpose)) byPur[a.purpose] += a.amount; });
+    if (byPur.hasOwnProperty('Extended Teaching')) byPur['Extended Teaching'] = getETAmountFromPayments(pays);
+    var due = 0, owe = {};
+    purposes.forEach(function(pu) { var d = feeDue(st.name, c, pu); due += d; owe[pu] = Math.max(0, _r2(d - byPur[pu])); });
+    var paid = purposes.length < DB.purposes.length ? purposes.reduce(function(t, pu) { return t + byPur[pu]; }, 0) : pays.reduce(function(t, p) { return t + (p.rawAmount || p.amount); }, 0);
+    var un = pays.reduce(function(t, p) { return t + (p.unallocated || 0); }, 0);
+    var owing = Math.max(0, _r2(due - paid));
+    if (owing > 0) out.push({ name: st.name, cls: c, phone: st.parentPhone || '', due: due, paid: _r2(paid), owing: owing, unalloc: _r2(un), owe: owe });
+  }
+  var classes = cls ? [cls] : ((currentUser.role !== 'admin' && currentUser.classes && currentUser.classes.length) ? currentUser.classes : DB.classes);
+  classes.forEach(function(c) { DB.students.filter(function(st) { return st.class === c && st.status !== 'graduated'; }).forEach(function(st) { add(st, c); }); });
+  if (!cls && currentUser.role === 'admin') DB.students.filter(function(st) { return st.status === 'graduated' && arrearsOf(st.name, st.class) > 0; }).forEach(function(st) { add(st, st.class); });
+  return out.sort(function(a, b) { return b.owing - a.owing || a.name.localeCompare(b.name); });
+}
+function openDefaulters(cls) {
+  cls = cls || '';
+  var rows = _defaulterRows(cls), total = rows.reduce(function(t, r) { return t + r.owing; }, 0);
+  var allowed = (currentUser.role !== 'admin' && currentUser.classes && currentUser.classes.length) ? currentUser.classes : DB.classes;
+  var opts = (currentUser.role === 'admin' || allowed.length > 1 ? '<option value="">All classes</option>' : '') + allowed.map(function(c) { return '<option' + (c === cls ? ' selected' : '') + '>' + _x(c) + '</option>'; }).join('');
+  openModal('Who owes', '<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap"><select onchange="openDefaulters(this.value)">' + opts + '</select>'
+    + '<button class="btn btn-outline btn-xs" onclick="exportDefaulters(\'' + cls + '\')">&#11015; Export all (Excel)</button></div>'
+    + '<div style="font-size:12px;margin-bottom:8px"><strong>' + rows.length + '</strong> students owe <strong>GHS ' + _r2(total) + '</strong> in total.'
+    + ' Money a student paid that you have not allocated yet is already counted as paid.</div>'
+    + (rows.length ? '<div class="twrap" style="max-height:340px;overflow:auto"><table><tr><th>Student</th><th>Class</th><th style="text-align:right">Fee</th><th style="text-align:right">Paid</th><th style="text-align:right">Owes</th></tr>'
+      + rows.slice(0, 150).map(function(r) { return '<tr><td style="font-size:12px">' + _x(r.name) + '</td><td>' + _x(r.cls) + '</td><td style="text-align:right">' + r.due + '</td><td style="text-align:right">' + r.paid + '</td><td style="text-align:right;color:var(--red);font-weight:700">' + r.owing + '</td></tr>'; }).join('')
+      + '</table></div>' + (rows.length > 150 ? '<div style="font-size:11px;color:var(--textm);margin-top:6px">Showing the first 150. Export for the full list.</div>' : '')
+      : '<div style="color:var(--g2);font-size:13px">✓ Nobody owes anything here' + (DB.students.length ? '.' : ' (no students imported yet).') + '</div>'));
+}
+function exportDefaulters(cls) {
+  var purposes = visiblePurposes(), rows = _defaulterRows(cls || '');
+  var data = [['Student', 'Class', 'Parent phone', 'Fee due (GHS)', 'Paid (GHS)', 'Owes (GHS)', 'Paid but not yet allocated (GHS)'].concat(purposes.map(function(p) { return 'Owes: ' + p; }))];
+  rows.forEach(function(r) { data.push([r.name, r.cls, r.phone, r.due, r.paid, r.owing, r.unalloc].concat(purposes.map(function(p) { return r.owe[p] || 0; }))); });
+  toExcel(data, 'ASMaP_Who_Owes' + (cls ? '_' + cls : ''));
 }
 // ===================== end fee schedule =====================
 
@@ -7916,6 +8009,7 @@ syncFromSupabase = async function(silent) {
   try {
     var ch = await sbGet('student_charges','select=*&limit=10000');
     if (ch) DB.charges = ch.map(function(c){ return {id:c.id,studentId:c.student_id,student:c.student_name,class:c.class_name,kind:c.kind,meetingId:c.meeting_id,amount:parseFloat(c.amount)||0,note:c.note,waived:!!c.waived}; });
+    ensureSpecialPurposes();
   } catch(e){}
   // Load behaviour records
   try {
