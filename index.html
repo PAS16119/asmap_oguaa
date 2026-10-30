@@ -320,7 +320,7 @@ tr:hover td{background:#f9fafb;}
       <input type="password" id="lp" placeholder="Enter password" autocomplete="current-password">
     </div>
     <button class="btn btn-primary" onclick="doLogin()">Sign In →</button>
-    <p style="text-align:center;font-size:11px;color:var(--textm);margin-top:14px;">Adombra School Management &amp; Analytics Platform · v1.0 · build 30Oct-d</p>
+    <p style="text-align:center;font-size:11px;color:var(--textm);margin-top:14px;">Adombra School Management &amp; Analytics Platform · v1.0 · build 30Oct-e</p>
     <div id="conn-result" style="margin-top:8px;font-size:12px;text-align:center;display:none"></div>
   </div>
 </div>
@@ -643,7 +643,7 @@ async function syncFromSupabase(silent=false) {
         beceIndex:s.bece_index||'', firstNames:s.first_names||'', surname:s.surname||'',
         dob:s.date_of_birth||'', gender:s.gender||'', nhis:s.nhis_number||'',
         residentialStatus:s.residential_status||'', house:s.house||'', programme:s.programme||'',
-        dateOfReporting:s.date_of_reporting||'', batchYear:s.batch_year||'', status:s.status||'active',
+        dateOfReporting:s.date_of_reporting||'', batchYear:s.batch_year||'', status:s.status||'active', alumniYear:s.alumni_year||'', lastClass:s.last_class||'',
         parentPrefix:s.parent_prefix||'', parentFirstName:s.parent_first_name||'', parentLastName:s.parent_last_name||'',
         parentPhone:s.parent_phone||'', parentWhatsapp:s.parent_whatsapp||'', parentEmail:s.parent_email||'',
         whatsappSmsSent:s.whatsapp_sms_sent||false,
@@ -5367,7 +5367,8 @@ function renderSettings() {
               + '<div style="font-size:12px;color:var(--textm);margin-bottom:8px">'+itemsList+'</div>'
               + '<div style="display:flex;gap:6px;flex-wrap:wrap">'
               + '<button class="btn btn-xs btn-outline" onclick="openManageAdmissionItems(\''+y.id+'\')">&#9998; Edit Items</button>'
-              + '<button class="btn btn-xs btn-primary" onclick="openYearRollover()">&#128260; Year Rollover</button>'
+              + '<button class="btn btn-xs btn-primary" onclick="openYearRollover()">&#128260; Close year &amp; promote</button>'
+              + '<button class="btn btn-xs btn-outline" onclick="openAlumni()">&#127891; Alumni</button>'
               + '<button class="btn btn-xs btn-outline" onclick="openArchives()">Archives</button>'
               + '</div>'
               : '')
@@ -5457,7 +5458,7 @@ function renderSettings() {
 
   // App info
   html += '<div style="text-align:center;padding:16px;color:var(--textm);font-size:11px">'
-    + 'ASMaP \u00b7 Adombra School Management &amp; Analytics Platform \u00b7 v1.0 · build 30Oct-d<br>'
+    + 'ASMaP \u00b7 Adombra School Management &amp; Analytics Platform \u00b7 v1.0 · build 30Oct-e<br>'
     + s.schoolName + ' \u00b7 ' + s.schoolLocation + '</div>';
 
   el.innerHTML = html;
@@ -5666,78 +5667,8 @@ function submitAdmissionItems(yearId) {
   saveDB().then(function(){ closeModal(); showToast('Items saved ✓','success'); renderSettings(); });
 }
 
-function openYearRollover() {
-  var activeYear = DB.settings.activeYear || '';
-  var _pend = DB.payments.filter(function(p){ return p.approvalStatus === 'pending'; }).length, _cf = 0, _cfn = 0;
-  DB.students.forEach(function(st){ if (st.status === 'active') { var b = getStudentBalance(st.name, st.class); if (b > 0.009) { _cf += b; _cfn++; } } });
-  var shs3 = DB.students.filter(function(s){ return s.form === 'SHS3' && s.status === 'active'; });
-  var shs2 = DB.students.filter(function(s){ return s.form === 'SHS2' && s.status === 'active'; });
-  var shs1 = DB.students.filter(function(s){ return s.form === 'SHS1' && s.status === 'active'; });
-  openModal('Year Rollover',
-    '<div style="background:var(--redp);border-radius:8px;padding:12px;margin-bottom:14px;font-size:13px;color:var(--red)">'
-    + '⚠️ This action cannot be undone. Run ONLY at the end of the academic year.'
-    + '</div>'
-    + '<div style="font-size:13px;margin-bottom:14px">'
-    + '<div style="padding:8px 0;border-bottom:1px solid var(--grayb)">🎓 <strong>'+shs3.length+' SHS3 students</strong> → marked as Graduated</div>'
-    + '<div style="padding:8px 0;border-bottom:1px solid var(--grayb)">⬆️ <strong>'+shs2.length+' SHS2 students</strong> → promoted to SHS3</div>'
-    + '<div style="padding:8px 0;border-bottom:1px solid var(--grayb)">⬆️ <strong>'+shs1.length+' SHS1 students</strong> → promoted to SHS2</div>'
-    + '<div style="padding:8px 0">🆕 New SHS1 will be registered through the Admission tab</div>'
-    + '</div>'
-    + (_pend ? '<div style="background:var(--redp);border-radius:8px;padding:10px;margin-bottom:10px;font-size:12px;color:var(--red)">⚠️ ' + _pend + ' payment(s) are still pending approval. Approve or reject them first, or they will not count towards balances.</div>' : '')
-    + '<div style="background:var(--goldp);border-radius:8px;padding:10px;margin-bottom:10px;font-size:12px">💼 <strong>' + _cfn + ' students</strong> still owe <strong>GHS ' + _r2(_cf) + '</strong> (including PTA fines). When you archive below, each balance is carried into the new year as <strong>Arrears</strong>, and payments they make later can be allocated to it.</div>'
-    + '<div class="fgrp"><label>NEW ACADEMIC YEAR NAME</label>'
-    + '<input type="text" id="new-year-name" placeholder="e.g. 2025/2026" value=""></div>'
-        + '<label style="display:flex;gap:8px;align-items:center;font-size:13px;margin:10px 0"><input type="checkbox" id="rollover-archive" checked> Archive this year\'s records and clear them for the new year</label>'
-    + '<button class="btn btn-danger" style="width:100%" onclick="executeYearRollover()">Execute Year Rollover</button>'
-  );
-}
+// (rollover moved: see CLOSE YEAR & PROMOTE)
 
-async function executeYearRollover() {
-  var newYearName = (document.getElementById('new-year-name').value || '').trim();
-  if (!newYearName) { showToast('Enter the new year name','error'); return; }
-  if (DB.years.find(function(y){ return y.name === newYearName; })) {
-    showToast('Year already exists','error'); return;
-  }
-  if (document.getElementById('rollover-archive') && document.getElementById('rollover-archive').checked) {
-    // Work out who owes BEFORE the payments are archived and cleared
-    var arr = Object.assign({}, (DB.paySettings && DB.paySettings.arrears) || {}), nCar = 0, tCar = 0;
-    DB.students.forEach(function(st) { if (st.status !== 'active') return; var b = getStudentBalance(st.name, st.class); if (b > 0.009) { arr[st.id] = _r2(b); nCar++; tCar += b; } else delete arr[st.id]; });
-    var fineIds = (DB.charges || []).filter(function(c) { return !c.waived; }).map(function(c) { return c.id; });
-    if (!(await archiveAndClearYear(getActiveYear() ? getActiveYear().name : DB.settings.activeYear))) return;
-    DB.paySettings.arrears = arr;
-    DB.paySettings.carriedFines = ((DB.paySettings.carriedFines) || []).concat(fineIds);
-    ensureSpecialPurposes();
-    audit('CARRY_ARREARS', nCar + ' students carry GHS ' + _r2(tCar) + ' into the new year', 'settings');
-  }
-  showToast('Running rollover…','warning');
-  var batchUpdates = [];
-  DB.students.forEach(function(s) {
-    if (s.status !== 'active') return;
-    if (s.form === 'SHS3') {
-      s.status = 'graduated';
-      batchUpdates.push(sbPatch('students', s.id, { status: 'graduated' }));
-    } else if (s.form === 'SHS2') {
-      s.form = 'SHS3';
-      batchUpdates.push(sbPatch('students', s.id, { form: 'SHS3' }));
-    } else if (s.form === 'SHS1') {
-      s.form = 'SHS2';
-      batchUpdates.push(sbPatch('students', s.id, { form: 'SHS2' }));
-    }
-  });
-  try {
-    await Promise.all(batchUpdates);
-  } catch(e) { console.warn('Some rollover updates failed', e); }
-  var newYear = { id: uid(), name: newYearName, active: true,
-    whatsappLink: '', admissionItems: getActiveYear() ? (getActiveYear().admissionItems||[]).slice() : [] };
-  DB.years.forEach(function(y){ y.active = false; });
-  DB.years.push(newYear);
-  DB.settings.activeYear = newYearName;
-  await saveDB();
-  closeModal();
-  showToast('Rollover complete ✓ New year: '+newYearName,'success');
-  renderSettings();
-  renderDashboard();
-}
 
 
 var ARCHIVE_SOURCES = [
@@ -6991,6 +6922,201 @@ function exportDefaulters(cls) {
   rows.forEach(function(r) { data.push([r.name, r.cls, r.phone, r.due, r.paid, r.owing, r.unalloc].concat(purposes.map(function(p) { return r.owe[p] || 0; }))); });
   toExcel(data, 'ASMaP_Who_Owes' + (cls ? '_' + cls : ''));
 }
+// ===================== CLOSE YEAR & PROMOTE =====================
+// Streams (Language 1, Science 2, Technical 2b ...) stay the same for all three years; only the form digit changes.
+// Promotion = form + 1, same stream. SHS3 become Alumni <year>. Unpaid balances are carried forward as Arrears first.
+var _promo = null;
+function _classDigit(cls, form) { var m = String(cls || '').match(/^\s*(\d)/); if (m) return Number(m[1]); var f = String(form || '').match(/\d/); return f ? Number(f[0]) : 0; }
+function _bumpClass(cls) { var m = String(cls).match(/^(\s*)(\d)(.*)$/); return m ? m[1] + (Number(m[2]) + 1) + m[3] : cls; }
+function _startYear(name) { var m = String(name || '').match(/\d{4}/); return m ? Number(m[0]) : 0; }
+function _nextYearName(n) { var m = String(n || '').match(/(\d{4})\D+(\d{4})/); if (m) return (Number(m[1]) + 1) + '/' + (Number(m[2]) + 1); var y = String(n || '').match(/\d{4}/); return y ? String(Number(y[0]) + 1) : ''; }
+function _alumniYearOf(n) { var m = String(n || '').match(/(\d{4})\D+(\d{4})/); if (m) return m[2]; var y = String(n || '').match(/\d{4}/); return y ? y[0] : String(new Date().getFullYear()); }
+function _ttCodes() {
+  if (typeof TT === 'undefined' || !TT || !TT.classes || !TT.slots || !TT_IDX) return null;
+  var act = {}; TT.slots.forEach(function(sl) { if (!_isFixed(sl)) sl.cls.forEach(function(c) { act[c] = 1; }); });
+  var set = {};
+  TT.classes.forEach(function(c) { if (act[c.id]) { var code = (TT.classMap && TT.classMap[c.id]) || _autoCode(c.n); if (code) set[code] = 1; (((TT.classJoin || {})[c.id]) || []).forEach(function(j) { set[j] = 1; }); } });
+  return set;
+}
+function _promoPlan() {
+  var st = _promo, byClass = {}, noForm = [], mismatch = [], tt = _ttCodes(), startY = _startYear(DB.settings.activeYear);
+  DB.students.filter(function(x) { return (x.status || 'active') === 'active'; }).forEach(function(x) {
+    var d = _classDigit(x.class, x.form);
+    if (!d) { noForm.push(x); return; }
+    var c = x.class || '(no class)', g = byClass[c] = byClass[c] || { cls: c, digit: d, students: [] };
+    g.students.push(x);
+    var ay = parseInt(x.admissionYear, 10);
+    if (startY && ay >= 2000 && ay <= startY && (startY - ay + 1) !== d) mismatch.push({ s: x, expected: startY - ay + 1, digit: d });
+  });
+  var rows = Object.keys(byClass).sort().map(function(c) {
+    var g = byClass[c], grad = g.digit >= 3, nc = grad ? '' : ((st.over && st.over[c]) || _bumpClass(c));
+    return { cls: c, digit: g.digit, n: g.students.length, grad: grad, newCls: nc, stay: g.students.filter(function(x) { return st.keep[x.id]; }).length,
+      flag: (!grad && tt && !tt[nc]) ? 'not in this timetable' : '' };
+  });
+  return { rows: rows, noForm: noForm, mismatch: mismatch, tt: tt };
+}
+function openYearRollover() {
+  if (!currentUser || currentUser.role !== 'admin') { showToast('Only an admin can close a year', 'error'); return; }
+  var an = DB.settings.activeYear || '';
+  _promo = { newYear: _nextYearName(an), alumni: _alumniYearOf(an), over: {}, keep: {}, view: 'main', repCls: '' };
+  renderPromoWizard();
+}
+function _promoRead() {
+  var st = _promo; if (!st) return; var g = function(id) { return document.getElementById(id); };
+  if (g('py-year')) st.newYear = g('py-year').value.trim();
+  if (g('py-alumni')) st.alumni = g('py-alumni').value.trim();
+  document.querySelectorAll('.po-in').forEach(function(i) { var v = i.value.trim(); if (v) st.over[i.dataset.cls] = v; else delete st.over[i.dataset.cls]; });
+}
+function promoView(v) { _promoRead(); _promo.view = v; renderPromoWizard(); }
+function promoKeep(id, on) { if (on) _promo.keep[id] = true; else delete _promo.keep[id]; }
+function promoRepClass(c) { _promo.repCls = c; renderPromoWizard(); }
+function renderPromoWizard() {
+  var st = _promo; if (!st) return;
+  if (st.view === 'repeaters') { renderPromoRepeaters(); return; }
+  var plan = _promoPlan(), pendPay = DB.payments.filter(function(p) { return p.approvalStatus === 'pending'; }).length;
+  var pendAtt = (DB.attendance || []).filter(function(a) { return a.approvalStatus === 'pending'; }).length;
+  var owe = 0, oweN = 0;
+  DB.students.forEach(function(x) { if ((x.status || 'active') === 'active') { var b = getStudentBalance(x.name, x.class); if (b > 0.009) { owe += b; oweN++; } } });
+  var kept = Object.keys(st.keep).length, grad = plan.rows.filter(function(r) { return r.grad; }).reduce(function(t, r) { return t + r.n - r.stay; }, 0);
+  var prom = plan.rows.filter(function(r) { return !r.grad; }).reduce(function(t, r) { return t + r.n - r.stay; }, 0);
+  var flagged = plan.rows.filter(function(r) { return r.flag; }).length;
+  var box = function(bg, fg, txt) { return '<div style="background:' + bg + ';border-radius:8px;padding:9px 11px;margin-bottom:8px;font-size:12px;color:' + fg + '">' + txt + '</div>'; };
+  var h = box('var(--redp)', 'var(--red)', '⚠️ Run this only at the end of the academic year. The year is archived first, and the archive keeps every student\'s old class, so nothing is lost.')
+    + (pendPay ? box('var(--redp)', 'var(--red)', '🛑 <strong>' + pendPay + ' payment(s) are still pending approval.</strong> Approve or reject them first. This cannot run until they are cleared.') : '')
+    + (pendAtt ? box('var(--goldp)', 'var(--gold)', '⚠️ ' + pendAtt + ' attendance record(s) are still pending approval. They will be archived as pending.') : '')
+    + box('var(--goldp)', 'inherit', '💼 <strong>' + oweN + ' students</strong> still owe <strong>GHS ' + _r2(owe) + '</strong> (including PTA fines). Each balance becomes <strong>Arrears</strong> in the new year, using this year\'s fees.')
+    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div class="fgrp"><label>NEW ACADEMIC YEAR</label><input type="text" id="py-year" value="' + _x(st.newYear) + '"></div>'
+    + '<div class="fgrp"><label>SHS3 BECOME "ALUMNI ..."</label><input type="text" id="py-alumni" value="' + _x(st.alumni) + '"></div></div>'
+    + '<div style="font-size:12px;font-weight:700;margin:6px 0">What will happen to each class</div>'
+    + '<div class="twrap" style="max-height:230px;overflow:auto"><table><tr><th>Now</th><th style="text-align:right">Students</th><th>Next year</th></tr>'
+    + plan.rows.map(function(r) {
+        return '<tr><td>' + _x(r.cls) + '</td><td style="text-align:right">' + r.n + (r.stay ? ' <span style="color:var(--gold)">(' + r.stay + ' stay)</span>' : '') + '</td><td>'
+          + (r.grad ? '🎓 Alumni ' + _x(st.alumni) : '→ <input class="po-in" data-cls="' + _x(r.cls) + '" value="' + _x(r.newCls) + '" style="width:92px;padding:3px 6px;border:1px solid var(--grayb);border-radius:6px"> ' + (r.flag ? '<span style="color:var(--red);font-size:11px">⚠ ' + r.flag + '</span>' : '')) + '</td></tr>';
+      }).join('') + '</table></div>'
+    + '<div style="font-size:12px;margin:8px 0"><strong>' + prom + '</strong> promoted, <strong>' + grad + '</strong> graduate' + (kept ? ', <strong>' + kept + '</strong> kept back' : '') + '.'
+    + (flagged ? ' <span style="color:var(--red)">' + flagged + ' class(es) flagged: the new class is not in your current timetable. Check them or edit the box.</span>' : (plan.tt ? ' All new classes exist in your timetable ✓' : ' (Import the timetable to have the new classes checked.)')) + '</div>'
+    + (plan.noForm.length ? box('var(--goldp)', 'inherit', plan.noForm.length + ' active student(s) have no form or class number, so they will not be moved: ' + _x(plan.noForm.slice(0, 6).map(function(x) { return x.name; }).join(', ')) + (plan.noForm.length > 6 ? '…' : '')) : '')
+    + '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'
+    + '<button class="btn btn-outline btn-xs" onclick="promoView(\'repeaters\')">Keep some students back' + (kept ? ' (' + kept + ')' : '') + '</button>'
+    + (plan.mismatch.length ? '<button class="btn btn-outline btn-xs" style="color:var(--red);border-color:var(--red)" onclick="_promo.repCls=\'__mismatch\';promoView(\'repeaters\')">⚠ ' + plan.mismatch.length + ' students: class disagrees with admission year</button>' : '') + '</div>'
+    + '<button class="btn btn-danger" style="width:100%"' + (pendPay ? ' disabled' : '') + ' onclick="runCloseYear()">Close year &amp; promote</button>';
+  openModal('Close year & promote', h);
+}
+function renderPromoRepeaters() {
+  var st = _promo, plan = _promoPlan(), classes = plan.rows.map(function(r) { return r.cls; });
+  if (!st.repCls) st.repCls = plan.mismatch.length ? '__mismatch' : (classes[0] || '');
+  var list = st.repCls === '__mismatch'
+    ? plan.mismatch.map(function(m) { return { s: m.s, note: 'admitted ' + m.s.admissionYear + ', so should be SHS' + m.expected + ', but class says ' + m.digit }; })
+    : DB.students.filter(function(x) { return (x.status || 'active') === 'active' && x.class === st.repCls; }).sort(function(a, b) { return a.name.localeCompare(b.name); }).map(function(x) { return { s: x, note: '' }; });
+  var opts = (plan.mismatch.length ? '<option value="__mismatch"' + (st.repCls === '__mismatch' ? ' selected' : '') + '>⚠ Admission-year mismatches (' + plan.mismatch.length + ')</option>' : '')
+    + classes.map(function(c) { return '<option' + (c === st.repCls ? ' selected' : '') + '>' + _x(c) + '</option>'; }).join('');
+  openModal('Keep students back', '<div style="font-size:12px;margin-bottom:8px">Tick students who repeat this year. They stay in their current class, and nothing is changed for them.</div>'
+    + '<select onchange="promoRepClass(this.value)" style="margin-bottom:8px">' + opts + '</select>'
+    + '<div style="max-height:320px;overflow:auto">' + (list.length ? list.map(function(it) {
+        return '<label style="display:flex;gap:8px;padding:4px 0;font-size:13px"><input type="checkbox" ' + (st.keep[it.s.id] ? 'checked ' : '') + 'onchange="promoKeep(\'' + it.s.id + '\',this.checked)"> <span>' + _x(it.s.name) + (it.note ? '<div style="font-size:10px;color:var(--textm)">' + _x(it.note) + '</div>' : '') + '</span></label>';
+      }).join('') : '<div style="font-size:12px;color:var(--textm)">No students here.</div>') + '</div>'
+    + '<button class="btn btn-primary" style="margin-top:10px" onclick="promoView(\'main\')">Back to summary</button>');
+}
+async function _patchStudentsIn(ids, body) {
+  for (var i = 0; i < ids.length; i += 60) {
+    var chunk = ids.slice(i, i + 60).map(encodeURIComponent).join(',');
+    var r = await fetch(SUPA_URL + '/rest/v1/students?id=in.(' + chunk + ')', { method: 'PATCH', headers: Object.assign({}, HDR, { 'Prefer': 'return=minimal' }), body: JSON.stringify(body) });
+    if (!r.ok) return false;
+  }
+  return true;
+}
+async function runCloseYear() {
+  _promoRead(); var st = _promo; if (!st) return;
+  var plan = _promoPlan();
+  if (!st.newYear) { showToast('Enter the new academic year', 'error'); return; }
+  if (DB.years.find(function(y) { return y.name === st.newYear; })) { showToast('That year already exists', 'error'); return; }
+  if (!st.alumni) { showToast('Enter the alumni label, e.g. 2027', 'error'); return; }
+  if (DB.payments.some(function(p) { return p.approvalStatus === 'pending'; })) { showToast('Approve or reject pending payments first', 'error'); return; }
+  if (plan.rows.some(function(r) { return !r.grad && !r.newCls; })) { showToast('A class has no new class code', 'error'); return; }
+  var flagged = plan.rows.filter(function(r) { return r.flag; }).length;
+  if (!confirm('Close ' + (DB.settings.activeYear || 'this year') + ' and start ' + st.newYear + '?\n\n' + (flagged ? flagged + ' class(es) are flagged as not in the timetable.\n\n' : '') + 'This archives and clears this year\'s records and cannot be undone from the app.')) return;
+  closeModal(); showToast('Closing the year. Please wait…', 'warning');
+  // 1. who owes (must happen before payments are cleared)
+  var arr = Object.assign({}, (DB.paySettings && DB.paySettings.arrears) || {}), nCar = 0, tCar = 0;
+  DB.students.forEach(function(x) { if ((x.status || 'active') !== 'active') return; var b = getStudentBalance(x.name, x.class); if (b > 0.009) { arr[x.id] = _r2(b); nCar++; tCar += b; } else delete arr[x.id]; });
+  var fineIds = (DB.charges || []).filter(function(c) { return !c.waived; }).map(function(c) { return c.id; });
+  // 2. archive and clear (snapshots every student's old class)
+  if (!(await archiveAndClearYear(getActiveYear() ? getActiveYear().name : DB.settings.activeYear))) return;
+  DB.paySettings.arrears = arr;
+  DB.paySettings.carriedFines = ((DB.paySettings.carriedFines) || []).concat(fineIds);
+  ensureSpecialPurposes();
+  audit('CARRY_ARREARS', nCar + ' students carry GHS ' + _r2(tCar) + ' into the new year', 'settings');
+  // 3. promote and graduate
+  var alumniClass = 'ALUMNI ' + st.alumni, groups = {}, moved = 0, grads = 0, failed = [], noCols = 0, accountMap = {};
+  DB.students.forEach(function(x) {
+    if ((x.status || 'active') !== 'active' || st.keep[x.id]) return;
+    var d = _classDigit(x.class, x.form); if (!d) return;
+    var body, apply;
+    if (d >= 3) {
+      body = { status: 'graduated', class_name: alumniClass, alumni_year: st.alumni, last_class: x.class || '' };
+      accountMap[x.class] = 'graduated';
+      apply = function() { x.lastClass = x.class; x.alumniYear = st.alumni; x.status = 'graduated'; x.class = alumniClass; };
+    } else {
+      var nc = (st.over && st.over[x.class]) || _bumpClass(x.class);
+      body = { class_name: nc, form: 'SHS' + (d + 1) };
+      accountMap[x.class] = nc;
+      apply = function() { x.class = nc; x.form = 'SHS' + (d + 1); };
+    }
+    var k = JSON.stringify(body); (groups[k] = groups[k] || { body: body, list: [] }).list.push({ s: x, apply: apply });
+  });
+  var keys = Object.keys(groups);
+  for (var gi = 0; gi < keys.length; gi++) {
+    var g = groups[keys[gi]], ids = g.list.map(function(it) { return it.s.id; });
+    var ok = await _patchStudentsIn(ids, g.body);
+    if (!ok && g.body.alumni_year !== undefined) { var slim = { status: g.body.status, class_name: g.body.class_name }; ok = await _patchStudentsIn(ids, slim); if (ok) noCols += ids.length; }
+    if (ok) { g.list.forEach(function(it) { it.apply(); }); if (g.body.status === 'graduated') grads += ids.length; else moved += ids.length; }
+    else failed.push(ids.length + ' student(s) → ' + (g.body.class_name || ''));
+  }
+  // 4. class list for the new year: promoted classes + a Form 1 class for every stream
+  var rests = {}; DB.classes.concat(DB.students.map(function(x) { return x.class; })).forEach(function(c) { var m = String(c || '').match(/^\s*\d(.+)$/); if (m) rests[m[1]] = 1; });
+  var nextClasses = {}; DB.students.forEach(function(x) { if ((x.status || 'active') === 'active' && x.class) nextClasses[x.class] = 1; });
+  Object.keys(rests).forEach(function(r) { nextClasses['1' + r] = 1; });
+  DB.classes = Object.keys(nextClasses).sort();
+  // 5. new year
+  var newYear = { id: uid(), name: st.newYear, active: true, whatsappLink: '', admissionItems: getActiveYear() ? (getActiveYear().admissionItems || []).slice() : [] };
+  DB.years.forEach(function(y) { y.active = false; }); DB.years.push(newYear); DB.settings.activeYear = st.newYear;
+  await saveDB();
+  audit('CLOSE_YEAR', moved + ' promoted, ' + grads + ' graduated to ' + alumniClass + ', ' + nCar + ' carry arrears, ' + failed.length + ' failed', 'settings');
+  // 6. report
+  var staff = (DB.users || []).filter(function(u) { return u.active !== false && (u.classes || []).some(function(c) { return accountMap[c]; }); });
+  var rep = '<div style="font-size:13px"><div style="color:var(--g2);font-weight:700;margin-bottom:6px">✓ ' + _x(st.newYear) + ' has started</div>'
+    + '<div>' + moved + ' students promoted · ' + grads + ' became ' + _x(alumniClass) + ' · GHS ' + _r2(tCar) + ' carried as Arrears (' + nCar + ' students)</div>'
+    + (noCols ? '<div style="color:var(--gold);margin-top:6px">Alumni year and last class were not saved for ' + noCols + ' students because the extra columns are missing. Run 15_alumni.sql to enable them.</div>' : '')
+    + (failed.length ? '<div style="color:var(--red);margin-top:8px"><strong>These were NOT moved. Fix them in Manage → Students:</strong><br>' + failed.map(_x).join('<br>') + '</div>' : '')
+    + '<div style="font-weight:700;margin:12px 0 4px">Do next</div><ol style="margin:0 0 0 18px;padding:0;line-height:1.7">'
+    + '<li>Import the new timetable (Lesson Log), then click <strong>Use timetable classes everywhere</strong>.</li>'
+    + '<li>Import the new SHS1 students (Admission). Their classes already exist.</li>'
+    + '<li>Check the <strong>Fee Schedule</strong> for the new year.</li></ol>'
+    + (staff.length ? '<div style="font-weight:700;margin:12px 0 4px">Accounts that still point at old classes</div><div class="twrap" style="max-height:150px;overflow:auto"><table><tr><th>User</th><th>Role</th><th>Was</th><th>Now</th></tr>'
+        + staff.map(function(u) { return '<tr><td>' + _x(u.name) + '</td><td>' + _x(u.role) + '</td><td>' + _x((u.classes || []).join(', ')) + '</td><td>' + _x((u.classes || []).map(function(c) { return accountMap[c] === 'graduated' ? 'graduated' : (accountMap[c] || c); }).join(', ')) + '</td></tr>'; }).join('')
+        + '</table></div><div style="font-size:11px;color:var(--textm);margin-top:4px">Reassign these in Manage → Users. Class prefect logins are linked to the timetable, so create the new ones from Lesson Log → Classes.</div>' : '')
+    + '</div>';
+  openModal('Year closed', rep);
+  renderSettings(); if (typeof renderDashboard === 'function') renderDashboard();
+}
+function executeYearRollover() { runCloseYear(); }
+// ---- Alumni
+function openAlumni() {
+  var al = DB.students.filter(function(x) { return x.status === 'graduated'; }), years = {};
+  al.forEach(function(x) { var y = x.alumniYear || String(x.class || '').replace(/^ALUMNI\s*/i, '') || 'Earlier'; (years[y] = years[y] || []).push(x); });
+  var ys = Object.keys(years).sort().reverse();
+  openModal('Alumni', (ys.length ? '<div class="twrap"><table><tr><th>Year</th><th style="text-align:right">Alumni</th><th style="text-align:right">Cleared</th><th style="text-align:right">Owe arrears</th></tr>'
+    + ys.map(function(y) { var l = years[y], owing = l.filter(function(x) { return arrearsOf(x.name, x.class) > 0; }).length; return '<tr><td>Alumni ' + _x(y) + '</td><td style="text-align:right">' + l.length + '</td><td style="text-align:right;color:var(--g2)">' + (l.length - owing) + '</td><td style="text-align:right;color:' + (owing ? 'var(--red)' : 'inherit') + '">' + owing + '</td></tr>'; }).join('')
+    + '</table></div><button class="btn btn-outline btn-sm" style="margin-top:10px" onclick="exportAlumni()">&#11015; Export alumni (Excel)</button>'
+    : '<div style="font-size:13px;color:var(--textm)">No alumni yet. Students who finish SHS3 appear here after you close the year.</div>'));
+}
+function exportAlumni() {
+  var rows = [['Name', 'Alumni year', 'Last class', 'Programme', 'BECE index', 'Parent phone', 'Owes arrears (GHS)', 'Cleared']];
+  DB.students.filter(function(x) { return x.status === 'graduated'; }).sort(function(a, b) { return String(b.alumniYear || '').localeCompare(String(a.alumniYear || '')) || a.name.localeCompare(b.name); })
+    .forEach(function(x) { var a = arrearsOf(x.name, x.class); rows.push([x.name, x.alumniYear || String(x.class || '').replace(/^ALUMNI\s*/i, ''), x.lastClass || '', x.programme || '', x.beceIndex || '', x.parentPhone || '', a, a > 0 ? 'No' : 'Yes']); });
+  toExcel(rows, 'ASMaP_Alumni');
+}
+// ===================== end close year =====================
 // ===================== end fee schedule =====================
 
 // SMS PAGE RENDER
