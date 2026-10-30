@@ -320,7 +320,7 @@ tr:hover td{background:#f9fafb;}
       <input type="password" id="lp" placeholder="Enter password" autocomplete="current-password">
     </div>
     <button class="btn btn-primary" onclick="doLogin()">Sign In →</button>
-    <p style="text-align:center;font-size:11px;color:var(--textm);margin-top:14px;">Adombra School Management &amp; Analytics Platform · v1.0 · build 29Oct-b</p>
+    <p style="text-align:center;font-size:11px;color:var(--textm);margin-top:14px;">Adombra School Management &amp; Analytics Platform · v1.0 · build 29Oct-c</p>
     <div id="conn-result" style="margin-top:8px;font-size:12px;text-align:center;display:none"></div>
   </div>
 </div>
@@ -5653,7 +5653,7 @@ function renderSettings() {
 
   // App info
   html += '<div style="text-align:center;padding:16px;color:var(--textm);font-size:11px">'
-    + 'ASMaP \u00b7 Adombra School Management &amp; Analytics Platform \u00b7 v1.0 · build 29Oct-b<br>'
+    + 'ASMaP \u00b7 Adombra School Management &amp; Analytics Platform \u00b7 v1.0 · build 29Oct-c<br>'
     + s.schoolName + ' \u00b7 ' + s.schoolLocation + '</div>';
 
   el.innerHTML = html;
@@ -6080,6 +6080,7 @@ async function renderLessons(mode) {
     + '<button class="btn btn-xs ' + (mode === 'month' ? 'btn-primary' : 'btn-outline') + '" onclick="renderLessons(\'month\')">Teacher of the Month</button>'
     + '<button class="btn btn-xs ' + (mode === 'access' ? 'btn-primary' : 'btn-outline') + '" onclick="renderLessons(\'access\')">Who can record</button>'
     + '<button class="btn btn-xs ' + (mode === 'ext' ? 'btn-primary' : 'btn-outline') + '" onclick="renderLessons(\'ext\')">Extended check</button>'
+    + '<button class="btn btn-xs ' + (mode === 'classes' ? 'btn-primary' : 'btn-outline') + '" onclick="renderLessons(\'classes\')">Classes</button>'
     + '<button class="btn btn-xs btn-outline" onclick="syncTeachersFromTT()">Sync teachers</button>'
     + '<label class="btn btn-xs btn-outline" style="cursor:pointer">Import timetable<input type="file" accept=".json" style="display:none" onchange="importTimetable(this)"></label></div>' : '';
   if (!admin && _canRep()) bar = '<div class="fbar"><button class="btn btn-xs ' + (mode === 'record' ? 'btn-primary' : 'btn-outline') + '" onclick="renderLessons(\'record\')">Record</button><button class="btn btn-xs ' + (mode === 'report' ? 'btn-primary' : 'btn-outline') + '" onclick="renderLessons(\'report\')">Report</button></div>';
@@ -6088,6 +6089,7 @@ async function renderLessons(mode) {
   if (mode === 'month' && admin) return lessonMonth();
   if (mode === 'access' && admin) return lessonAccess();
   if (mode === 'ext' && admin) return lessonExt();
+  if (mode === 'classes' && admin) return lessonClasses();
   return lessonRecord();
 }
 
@@ -6256,14 +6258,14 @@ async function lessonRecord(keepSel, keepDate) {
   var admin = currentUser.role === 'admin', isPref = currentUser.role === 'class_prefect', body = document.getElementById('lsn-body');
   var active = {}; TT.slots.forEach(function(s) { if (!_isFixed(s)) s.cls.forEach(function(c) { active[c] = 1; }); });
   var opts = TT.classes.filter(function(c) { return active[c.id]; });
-  var sel = isPref ? _myTT() : keepSel, dt = admin ? keepDate : todayStr();
+  var canBack = admin || (currentUser.permissions || []).indexOf('lesson_log') >= 0, sel = isPref ? _myTT() : keepSel, dt = canBack ? keepDate : todayStr();
   try { if (!sel && !isPref) sel = localStorage.getItem('lsnClass') || ''; } catch (e) {}
   if (!dt) dt = todayStr();
   _lsnSel = sel; _lsnDt = dt;
   var h = '<div class="fbar">' + (isPref ? '<strong>' + _x(TT_IDX.c[sel] ? TT_IDX.c[sel].n : 'No class assigned') + '</strong>'
     : '<select id="lsn-cls" onchange="try{localStorage.setItem(\'lsnClass\',this.value)}catch(e){};lessonRecord(this.value,document.getElementById(\'lsn-date\').value)"><option value="">Select class</option>'
-      + opts.map(function(c) { return '<option value="' + c.id + '"' + (c.id === sel ? ' selected' : '') + '>' + _x(c.n) + '</option>'; }).join('') + '</select>')
-    + '<input type="date" id="lsn-date" value="' + dt + '" ' + (admin ? 'max="' + todayStr() + '" onchange="lessonRecord(' + (isPref ? '' : 'document.getElementById(\'lsn-cls\').value') + ',this.value)"' : 'disabled') + '></div>';
+      + opts.map(function(c) { return '<option value="' + c.id + '"' + (c.id === sel ? ' selected' : '') + '>' + _x((TT.classMap && TT.classMap[c.id] ? TT.classMap[c.id] + ' · ' : '') + c.n) + '</option>'; }).join('') + '</select>')
+    + '<input type="date" id="lsn-date" value="' + dt + '" ' + (canBack ? 'max="' + todayStr() + '"' + (admin ? '' : ' min="' + _daysAgo(14) + '"') + ' onchange="lessonRecord(' + (isPref ? '' : 'document.getElementById(\'lsn-cls\').value') + ',this.value)"' : 'disabled') + '></div>';
   if (!sel) { body.innerHTML = h + '<div class="card" style="padding:14px">' + (isPref ? 'Your class has not been set yet. Please ask the admin.' : 'Choose a class to see its lessons.') + '</div>'; return; }
   var recs = {};
   try {
@@ -6284,7 +6286,7 @@ async function lessonRecord(keepSel, keepDate) {
     if (!real.length) { h += '<div class="card" style="padding:8px 10px;margin-bottom:6px;opacity:.6">' + head + ' · ' + (at.length ? _x(TT_IDX.s[at[0][0].sub].n) : 'No lesson scheduled') + '</div>'; continue; }
     real.forEach(function(a) {
       var s = a[0], i = a[1], rec = recs[s.p + '|' + s.sub] || {}, st = ({ late: 'present', no_lesson: 'not_held', cover: 'absent' })[rec.status] || rec.status || '';
-      var locked = !admin && pd.s && _tm(pd.s) > nm, dis = locked ? ' disabled' : '';
+      var locked = !admin && dt === todayStr() && pd.s && _tm(pd.s) > nm, dis = locked ? ' disabled' : '';
       var tn = s.t && s.t.length ? s.t.map(_tName).join(' / ') : (admin ? '<select onchange="assignTeacher(' + i + ',this.value)"><option value="">Set teacher</option>' + (s.c && s.c.length ? s.c : TT.teachers.map(function(t) { return t.id; })).map(function(id) { return '<option value="' + id + '">' + _x(TT_IDX.t[id].n) + '</option>'; }).join('') + '</select>' : 'Teacher not set');
       _lsnRows.push(i);
       h += '<div class="card" style="padding:10px;margin-bottom:8px' + (locked ? ';opacity:.5' : '') + '"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><strong>' + head + ' · ' + _x(TT_IDX.s[s.sub].n) + (p === 9 ? ' <small>(Extended teaching)</small>' : '') + '</strong><span>' + tn + '</span></div>'
@@ -6387,6 +6389,62 @@ async function waiveFine(id) {
   var c = (DB.charges || []).find(function(x) { return x.id === id; }); if (!c) return;
   if (!(await sbPatch('student_charges', id, { waived: true, waived_by: currentUser.name || currentUser.username }))) { showToast('Could not waive', 'error'); return; }
   c.waived = true; audit('WAIVE_FINE', c.student + ' GHS ' + c.amount, 'student_charges', id); renderPTA();
+}
+
+
+var CLS_ABBR = { 'AGRICULTURE': 'AGR', 'BUSINESS': 'BUS', 'GENERAL ARTS': 'ARTS', 'HOME ECONOMICS': 'HOM', 'LANGUAGE': 'LANG', 'SCIENCE': 'SCI', 'TECHNICAL': 'TECH', 'VISUAL ARTS': 'VIS' }, _clsForm = '3';
+function _autoCode(n) { var m = String(n).match(/^(\d)\s*(.+?)\s*(\d+)\s*([A-Za-z]?)$/); if (!m) return ''; var ab = CLS_ABBR[m[2].toUpperCase()]; return ab ? m[1] + ab + m[3] + m[4].toUpperCase() : ''; }
+function _daysAgo(k) { var d = new Date(); d.setDate(d.getDate() - k); return d.toISOString().split('T')[0]; }
+function _pw() { var c = 'abcdefghjkmnpqrstuvwxyz23456789', o = ''; for (var i = 0; i < 8; i++) o += c.charAt(Math.floor(Math.random() * c.length)); return o; }
+function _clsList() {
+  var act = {}; TT.slots.forEach(function(s) { if (!_isFixed(s)) s.cls.forEach(function(c) { act[c] = 1; }); });
+  return TT.classes.filter(function(c) { return act[c.id] && String(c.n).charAt(0) === _clsForm; });
+}
+function lessonClasses(form) {
+  var body = document.getElementById('lsn-body'); _clsForm = form || _clsForm; TT.classMap = TT.classMap || {};
+  var codes = DB.classes.slice().sort(), pref = {};
+  DB.users.forEach(function(u) { (u.permissions || []).forEach(function(p) { if (String(p).indexOf('ttclass:') === 0) pref[String(p).slice(8)] = u.username; }); });
+  body.innerHTML = '<div class="fbar">' + ['1', '2', '3'].map(function(f) { return '<button class="btn btn-xs ' + (f === _clsForm ? 'btn-primary' : 'btn-outline') + '" onclick="lessonClasses(\'' + f + '\')">SHS' + f + '</button>'; }).join('')
+    + '<button class="btn btn-xs btn-primary" onclick="saveClassMap(true)">Save matching</button><button class="btn btn-xs btn-outline" onclick="createPrefects()">Create missing class prefects</button><button class="btn btn-xs btn-outline" onclick="tidyClasses()">Make class lists match</button></div>'
+    + '<div class="card" style="padding:10px;font-size:12px;margin-bottom:8px">Match each timetable class to the class code used for students. After you save, the Lesson Log, Attendance and prefects all use the same codes.</div>'
+    + _clsList().map(function(c) {
+      var cur = TT.classMap[c.id] || (function() { var g = _autoCode(c.n); var b = g.replace(/\d+[A-Z]?$/, ''); return codes.indexOf(g) >= 0 ? g : (codes.indexOf(g + 'A') >= 0 ? g + 'A' : (g && codes.indexOf(b) >= 0 ? b : '')); })();
+      return '<div style="display:flex;gap:8px;align-items:center;padding:5px 0;border-bottom:1px solid var(--grayb)"><span style="flex:1">' + _x(c.n) + '</span><select id="cm-' + c.id + '"><option value="">Not matched</option>' + codes.map(function(k) { return '<option' + (k === cur ? ' selected' : '') + '>' + _x(k) + '</option>'; }).join('') + '</select><small style="width:90px">' + (pref[c.id] ? 'prefect: ' + _x(pref[c.id]) : 'no prefect') + '</small></div>';
+    }).join('');
+}
+async function saveClassMap(toast) {
+  TT.classMap = TT.classMap || {};
+  _clsList().forEach(function(c) { var v = (document.getElementById('cm-' + c.id) || {}).value; if (v) TT.classMap[c.id] = v; else delete TT.classMap[c.id]; });
+  try { await _saveTimetable(TT); if (toast) showToast('Class matching saved', 'success'); return true; } catch (e) { showToast(e.message, 'error'); return false; }
+}
+async function createPrefects() {
+  if (!(await saveClassMap(false))) return;
+  var have = {}; DB.users.forEach(function(u) { (u.permissions || []).forEach(function(p) { if (String(p).indexOf('ttclass:') === 0) have[String(p).slice(8)] = 1; }); });
+  var todo = _clsList().filter(function(c) { return TT.classMap[c.id] && !have[c.id]; });
+  if (!todo.length) { showToast('Every matched class already has a prefect', 'success'); return; }
+  var out = [], fail = [];
+  for (var i = 0; i < todo.length; i++) {
+    var c = todo[i], code = TT.classMap[c.id], uname = 'p' + code.toLowerCase().replace(/[^a-z0-9]/g, ''), pw = _pw(), perms = ['ttclass:' + c.id], id = uid();
+    try {
+      await callAdminUsers('create_user', { legacy_id: id, username: uname, password: pw, role: 'class_prefect', full_name: code + ' CLASS PREFECT', assigned_classes: [code], permissions: perms, phone: '', dept: '', house: '', teacher_link: '' });
+      DB.users.push({ id: id, username: uname, role: 'class_prefect', name: code + ' CLASS PREFECT', classes: [code], active: true, permissions: perms, phone: '', dept: '', house: '', teacherLink: '' });
+      out.push([code, uname, pw]);
+    } catch (e) { fail.push(code + ': ' + e.message); }
+  }
+  window._newLogins = out;
+  openModal('Class prefect logins (shown once)', '<div style="font-size:12px;margin-bottom:8px">Write these down or download them now. Each prefect must change the password at first sign-in.' + (fail.length ? '<br><strong>Not created:</strong> ' + _x(fail.join('; ')) : '') + '</div><button class="btn btn-xs btn-primary" onclick="downloadLogins()">Download list (Excel)</button><table style="width:100%;font-size:13px;margin-top:8px">' + out.map(function(r) { return '<tr><td>' + _x(r[0]) + '</td><td>' + _x(r[1]) + '</td><td><strong>' + _x(r[2]) + '</strong></td></tr>'; }).join('') + '</table>');
+  lessonClasses();
+}
+function downloadLogins() {
+  var wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet((window._newLogins || []).map(function(r) { return { Class: r[0], Username: r[1], 'Temporary password': r[2] }; })), 'Class prefects');
+  XLSX.writeFile(wb, 'class_prefect_logins.xlsx');
+}
+function tidyClasses() {
+  var set = {}; DB.students.forEach(function(st) { if (st.class) set[st.class] = 1; }); Object.keys(TT.classMap || {}).forEach(function(k) { set[TT.classMap[k]] = 1; });
+  var next = Object.keys(set).sort();
+  showConfirm('Make class lists match', 'The class list used everywhere (Attendance, Payments and so on) will become these ' + next.length + ' classes: the ones students are in plus the ones you matched. Continue?', async function() {
+    DB.classes = next; await saveDB(); audit('TIDY_CLASSES', next.length + ' classes', 'settings'); showToast('Class list updated', 'success');
+  }, 'Update list', 'btn-primary');
 }
 
 function loadStandardPeriods() {
