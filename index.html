@@ -320,7 +320,7 @@ tr:hover td{background:#f9fafb;}
       <input type="password" id="lp" placeholder="Enter password" autocomplete="current-password">
     </div>
     <button class="btn btn-primary" onclick="doLogin()">Sign In →</button>
-    <p style="text-align:center;font-size:11px;color:var(--textm);margin-top:14px;">Adombra School Management &amp; Analytics Platform · v1.0 · build 30Oct-e</p>
+    <p style="text-align:center;font-size:11px;color:var(--textm);margin-top:14px;">Adombra School Management &amp; Analytics Platform · v1.0 · build 31Oct-a</p>
     <div id="conn-result" style="margin-top:8px;font-size:12px;text-align:center;display:none"></div>
   </div>
 </div>
@@ -994,6 +994,7 @@ function buildNav() {
 }
 
 function showTab(id) {
+  try { _ensureBanner(); } catch (e) {}
   document.querySelectorAll('.ntab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   const tab = document.getElementById('tab-' + id);
@@ -5458,7 +5459,7 @@ function renderSettings() {
 
   // App info
   html += '<div style="text-align:center;padding:16px;color:var(--textm);font-size:11px">'
-    + 'ASMaP \u00b7 Adombra School Management &amp; Analytics Platform \u00b7 v1.0 · build 30Oct-e<br>'
+    + 'ASMaP \u00b7 Adombra School Management &amp; Analytics Platform \u00b7 v1.0 · build 31Oct-a<br>'
     + s.schoolName + ' \u00b7 ' + s.schoolLocation + '</div>';
 
   el.innerHTML = html;
@@ -9660,7 +9661,145 @@ renderSettings = function() {
   el.appendChild(card);
 };
 
-
+// ===== Practice mode (test data) and Go live =====
+var _PR_TABLES = ['payment_allocations', 'payment_installments', 'payments', 'allowances', 'student_charges', 'lesson_attendance', 'ext_decisions', 'attendance', 'prefect_reports', 'scores', 'behaviour_records', 'pta_attendance', 'pta_meetings', 'students'];
+(function() {
+  var of = window.fetch.bind(window);
+  window.fetch = function(u, o) {
+    if (DB && DB.settings && DB.settings.mode === 'test' && /\/functions\/v1\/(send-sms|portal-payment)/.test(String(u)))
+      return Promise.resolve({ ok: true, status: 200, json: function() { return Promise.resolve({ success: true, test: true }); }, text: function() { return Promise.resolve('{"success":true,"test":true}'); } });
+    return of(u, o);
+  };
+})();
+function _ensureBanner() {
+  var on = DB.settings && DB.settings.mode === 'test', b = document.getElementById('test-banner');
+  if (on && !b) {
+    b = document.createElement('div'); b.id = 'test-banner';
+    b.style.cssText = 'position:sticky;top:0;z-index:50;background:#b45309;color:#fff;text-align:center;font-size:12px;padding:5px 8px';
+    b.textContent = 'PRACTICE MODE: everything here is test data. SMS and online payments are switched off. Admin: Settings > Practice mode > Go live when ready.';
+    document.body.insertBefore(b, document.body.firstChild);
+  } else if (!on && b) b.remove();
+}
+var _sd = 20260101;
+function _rn() { _sd = (_sd * 1664525 + 1013904223) % 4294967296; return _sd / 4294967296; }
+function _pk(a) { return a[Math.floor(_rn() * a.length)]; }
+function _weekdays(n) { var out = [], d = new Date(); while (out.length < n) { d.setDate(d.getDate() - 1); if (d.getDay() % 6) out.push(d.toISOString().split('T')[0]); } return out; }
+function _grade(t) { return t >= 80 ? 'A1' : t >= 70 ? 'B2' : t >= 65 ? 'B3' : t >= 60 ? 'C4' : t >= 55 ? 'C5' : t >= 50 ? 'C6' : t >= 45 ? 'D7' : t >= 40 ? 'E8' : 'F9'; }
+async function _bulkPost(table, rows) {
+  for (var i = 0; i < rows.length; i += 200) {
+    var r = await fetch(SUPA_URL + '/rest/v1/' + table, { method: 'POST', headers: Object.assign({}, HDR, { 'Prefer': 'resolution=merge-duplicates,return=minimal' }), body: JSON.stringify(rows.slice(i, i + 200)) });
+    if (!r.ok) { var t = ''; try { t = await r.text(); } catch (e) {} throw new Error(table + ': code ' + r.status + ' ' + String(t).slice(0, 90)); }
+  }
+}
+async function _practiceWipe() {
+  for (var i = 0; i < _PR_TABLES.length; i++) {
+    var r = await fetch(SUPA_URL + '/rest/v1/' + _PR_TABLES[i] + '?id=not.is.null', { method: 'DELETE', headers: Object.assign({}, HDR, { 'Prefer': 'return=minimal' }) });
+    if (!r.ok && r.status !== 404) throw new Error(_PR_TABLES[i] + ' (code ' + r.status + ')');
+  }
+  ['students', 'payments', 'allocations', 'installments', 'allowances', 'attendance', 'scores', 'behaviourRecords', 'prefectReports', 'ptaMeetings', 'ptaAttendance', 'charges'].forEach(function(k) { DB[k] = []; });
+  DB.teachers = [];
+  try { localStorage.removeItem('asmapOfflineQueue'); } catch (e) {}
+}
+async function _practiceGenerate() {
+  _sd = 20260101; var yr = (typeof getActiveYear === 'function' && getActiveYear()) ? getActiveYear().name : '2026/2027';
+  await loadTimetable();
+  var codes = (TT && TT.classMap ? Object.keys(TT.classMap).map(function(k) { return TT.classMap[k]; }) : DB.classes).filter(function(c, i, a) { return /^3/.test(c) && a.indexOf(c) === i; });
+  if (!codes.length) codes = ['3ARTS1', '3SCI1', '3BUS'];
+  ['2ARTS1', '1ARTS1'].forEach(function(c) { if (DB.classes.indexOf(c) < 0) DB.classes.push(c); });
+  codes.forEach(function(c) { if (DB.classes.indexOf(c) < 0) DB.classes.push(c); });
+  if (!DB.teachers.length) { if (TT) syncTeachersFromTT(); if (!DB.teachers.length) DB.teachers = ['TEST TEACHER ONE', 'TEST TEACHER TWO', 'TEST TEACHER THREE']; }
+  var SUR = ['MENSAH', 'ASANTE', 'BOATENG', 'TETTEH', 'APPIAH', 'DARKO', 'ANDOH', 'OSEI', 'FRIMPONG', 'AMOAH', 'YEBOAH', 'SULLEY', 'OWUSU', 'ACHEAMPONG', 'ARMAH', 'BOADU', 'ASARE', 'QUAYE', 'ADJEI', 'TAWIAH'];
+  var FIR = ['AMA', 'KOFI', 'ABENA', 'KWESI', 'AKOSUA', 'YAW', 'EFUA', 'KWAME', 'ADWOA', 'ESI', 'NANA', 'ABIBA', 'CHARLES', 'GRACE', 'FRANCIS', 'PATIENCE', 'SAMUEL', 'OLIVIA', 'MICHAEL', 'REBECCA'];
+  var S = [], n = 0, plan = codes.map(function(c) { return [c, 'SHS3', '2024/2025', 3]; }).concat([['2ARTS1', 'SHS2', '2025/2026', 3], ['1ARTS1', 'SHS1', '2026/2027', 3]]);
+  plan.forEach(function(p) { for (var k = 0; k < p[3]; k++, n++) S.push({ id: 'test_' + uid(), name: 'TEST ' + SUR[n % 20] + ' ' + FIR[(n * 7 + 3) % 20] + ' ' + (n + 1), class: p[0], form: p[1], admissionYear: p[2], status: 'active', gender: n % 2 ? 'Male' : 'Female',
+    dateOfBirth: (2008 + (n % 3)) + '-0' + (1 + n % 9) + '-1' + (n % 9), parentPhone: '+2332000' + ('00000' + (1000 + n)).slice(-5), parentFirstName: 'TEST PARENT', residentialStatus: 'Day', programme: '', ts: Date.now() }); });
+  await Promise.all(S.map(supabaseUpsertStudent));
+  var S3 = S.filter(function(s) { return s.form === 'SHS3'; }), me = DB.users.find(function(u) { return u.role === 'coordinator'; }) || currentUser, d = _weekdays(12), now = new Date().toISOString();
+  var pn = DB.purposes.map(function(p) { return p.name; }), ET = 'Extended Teaching', P2 = pn[1] || 'Others', P3 = pn[2] || 'Others';
+  var PAY = [], INS = [], ALC = [];
+  function pay(st, parts, dates, status, allocs) {
+    var id = 'test_' + uid(), raw = parts.reduce(function(a, b) { return a + b; }, 0), al = allocs.reduce(function(a, b) { return a + b[1]; }, 0), un = Math.round((raw - al) * 100) / 100;
+    PAY.push({ id: id, student_name: st.name, class_name: st.class, purpose: '', amount: raw, raw_amount: raw, unallocated: un, date: dates[dates.length - 1], recorded_by: me.id, recorded_by_name: me.name, approval_status: status, allocation_status: (un > 0 || !allocs.length) ? 'pending' : 'settled', approved_by: status === 'confirmed' ? currentUser.id : null });
+    parts.forEach(function(a, i) { INS.push({ id: 'test_' + uid(), student_name: st.name, class_name: st.class, amount: a, date: dates[i], recorded_by: me.id, recorded_by_name: me.name }); });
+    allocs.forEach(function(a) { ALC.push({ id: 'test_' + uid(), payment_id: id, student_name: st.name, class_name: st.class, purpose: a[0], amount: a[1], settled_by: currentUser.id, settled_at: now }); });
+  }
+  S3.forEach(function(st, i) {
+    if (i < 10) pay(st, [500], [d[8]], 'confirmed', [[ET, 500]]);
+    else if (i === 10) pay(st, [400, 300], [d[9], d[2]], 'confirmed', [[ET, 300], [P2, 200], [P3, 200]]);
+    else if (i < 17) pay(st, [300], [d[1]], 'pending', []);
+    else if (i < 20) pay(st, [600], [d[4]], 'confirmed', [[ET, 500]]);
+    else if (i < 23) pay(st, [250], [d[5]], 'confirmed', [[ET, 250]]);
+  });
+  var tn = DB.teachers, ATT = [];
+  for (var i = 0; i < 40; i++) { var ext = i % 2 === 0, per = ext ? 'Extended Teaching' : 'Period ' + (1 + i % 8);
+    ATT.push({ id: 'test_' + uid(), teacher_name: tn[i % tn.length], class_name: codes[i % codes.length], subject_name: _pk(['MATHEMATICS', 'ENGLISH LANGUAGE', 'INTEGRATED SCIENCE', 'SOCIAL STUDIES']), period: per, date: d[i % 10], status: ['on-time', 'on-time', 'on-time', 'late', 'absent'][i % 5], approval_status: i % 3 ? 'approved' : 'pending', att_type: ext ? 'extended' : 'normal', recorded_by: me.id, recorded_by_name: me.name }); }
+  var SC = [], BE = [];
+  S3.slice(0, 12).forEach(function(st) { ['MATHEMATICS', 'ENGLISH LANGUAGE', 'INTEGRATED SCIENCE'].forEach(function(sj) { var cs = 12 + Math.floor(_rn() * 18), es = 25 + Math.floor(_rn() * 55), t = cs + es;
+    SC.push({ id: 'test_' + uid(), student_name: st.name, student_id: st.id, class_name: st.class, subject: sj, term: 'Term 1', academic_year: yr, class_score: cs, exam_score: es, total: t, grade: _grade(t), entered_by: currentUser.id, entered_by_name: currentUser.name }); }); });
+  S3.slice(0, 10).forEach(function(st) { var sc = 60 + Math.floor(_rn() * 36); BE.push({ id: 'test_' + uid(), student_name: st.name, class_name: st.class, house: 'TANDOH', conduct_score: sc, conduct_grade: sc >= 85 ? 'A' : sc >= 70 ? 'B' : 'C', house_master_remark: 'Test remark', term: 'Term 1', academic_year: yr, entered_by: currentUser.id, entered_by_name: currentUser.name }); });
+  var mt = { id: 'test_pta1', title: 'TEST General PTA Meeting', meeting_date: d[3], term: 'Term 1', academic_year: yr, venue: 'School Hall', notes: 'Practice meeting', created_by: currentUser.id, target_classes: [codes[0]], fine_amount: 20 };
+  var PA = S3.filter(function(s) { return s.class === codes[0]; }).map(function(s, i) { return { id: 'test_' + uid(), meeting_id: 'test_pta1', student_id: s.id, student_name: s.name, class_name: s.class, parent_attended: i % 2 === 0, marked_by: currentUser.id }; });
+  var LA = [];
+  if (TT) {
+    var cls = TT.classes.filter(function(c) { return String(c.n).charAt(0) === '3' && TT.slots.filter(function(s) { return s.cls.indexOf(c.id) >= 0 && s.t && s.t.length; }).length > 8; }).slice(0, 2);
+    cls.forEach(function(c) { d.slice(0, 3).forEach(function(dt) { var wd = new Date(dt + 'T12:00:00').getDay();
+      TT.slots.filter(function(s) { return s.d === wd && s.cls.indexOf(c.id) >= 0 && s.t && s.t.length && !_isFixed(s); }).slice(0, 6).forEach(function(s) {
+        var pd = TT.periods.find(function(x) { return x.p === s.p; }) || { s: '7:00', e: '7:50' }, r = _rn(), st = r < .72 ? 'present' : r < .86 ? 'absent' : 'not_held', late = (st === 'present' && _rn() < .25) ? 12 : 0, as = st === 'present' && _rn() < .2;
+        LA.push({ id: dt + '_' + c.id + '_' + s.p + '_' + s.sub, att_date: dt, class_id: c.id, subject_id: s.sub, period: s.p, teacher_ids: s.t, status: st, recorded_by: 'TEST PREFECT', minutes_late: late, minutes_used: st === 'present' ? 50 - late : 0,
+          time_in: st === 'present' ? _hh(pd.s) : null, time_out: st === 'present' ? _hh(pd.e) : null, covered: false, cover_teacher_id: null, cover_in: null, cover_out: null, reason: st === 'not_held' ? 'Holiday' : '', reason_other: '', rating: st === 'present' ? 3 + Math.floor(_rn() * 3) : null,
+          remark: (st === 'present' && _rn() < .2) ? 'Test remark about the lesson' : '', activity: as ? 'assessment' : 'taught', assess_type: as ? 'Quiz' : '', students_present: st === 'present' ? 30 : null, students_total: st === 'present' ? 34 : null }); }); }); });
+  }
+  await _bulkPost('payments', PAY); await _bulkPost('payment_installments', INS); await _bulkPost('payment_allocations', ALC); await _bulkPost('attendance', ATT);
+  await _bulkPost('scores', SC); await _bulkPost('behaviour_records', BE); await _bulkPost('pta_meetings', [mt]); await _bulkPost('pta_attendance', PA); await _bulkPost('lesson_attendance', LA);
+  return { students: S.length, payments: PAY.length, attendance: ATT.length, scores: SC.length, lessons: LA.length };
+}
+async function practiceStart() {
+  if (currentUser.role !== 'admin') return;
+  var mode = DB.settings.mode || '', real = DB.students.filter(function(s) { return String(s.name).indexOf('TEST ') !== 0; }).length;
+  if (mode === 'live') { showToast('This school is live. Practice mode is locked.', 'warning'); return; }
+  if (mode !== 'test' && real > 0) { showToast('The system already holds ' + real + ' students that are not practice data. Practice mode only works on an empty system.', 'error'); return; }
+  showConfirm('Load practice data', 'This fills the system with test students, payments (pending, part-paid and settled), teacher attendance, scores, conduct, a PTA meeting and lesson records. SMS and online payments stay off. ' + (mode === 'test' ? 'Everything currently in the system will be replaced.' : ''), async function() {
+    try {
+      showToast('Loading practice data. Please wait...', 'warning');
+      if (mode === 'test') await _practiceWipe();
+      var r = await _practiceGenerate();
+      DB.settings.mode = 'test'; await saveDB(); await syncFromSupabase(true);
+      audit('PRACTICE_START', r.students + ' students, ' + r.payments + ' payments, ' + r.lessons + ' lesson records', 'system');
+      showToast('Practice data loaded: ' + r.students + ' students, ' + r.payments + ' payments, ' + r.attendance + ' attendance, ' + r.scores + ' scores, ' + r.lessons + ' lesson records', 'success');
+      _ensureBanner(); renderSettings();
+    } catch (e) { showToast('Practice data failed: ' + e.message, 'error'); }
+  }, 'Load practice data', 'btn-primary');
+}
+async function practiceGoLive() {
+  if (currentUser.role !== 'admin' || DB.settings.mode !== 'test') { showToast('Go live is only available in practice mode.', 'warning'); return; }
+  var typed = prompt('GO LIVE erases ALL data in the system: ' + DB.students.length + ' students, ' + DB.payments.length + ' payments, ' + DB.attendance.length + ' attendance records, and everything else (scores, conduct, PTA, lesson records, teacher list).\n\nKept: staff logins, settings, fee schedule, timetable and archives.\nA backup file downloads first. This cannot be undone.\n\nType GO LIVE to continue:');
+  if (typed === null) return;
+  if (String(typed).trim() !== 'GO LIVE') { showToast('Not confirmed. Nothing was erased.', 'warning'); return; }
+  try {
+    try { exportFullBackup(); } catch (e) {}
+    showToast('Erasing practice data...', 'warning');
+    await _practiceWipe();
+    DB.settings.mode = 'live'; DB.settings.liveSince = new Date().toISOString(); _ensureBanner();
+    if (TT && TT.classMap) await _deriveClasses();
+    await saveDB(); audit('GO_LIVE', 'Practice data erased. The school is now live.', 'system');
+    showToast('You are LIVE. All data is cleared. Reloading...', 'success');
+    setTimeout(function() { location.reload(); }, 1500);
+  } catch (e) { showToast('Go live stopped: ' + e.message + '. Some data may already be cleared; run it again.', 'error'); }
+}
+function _addPracticeCard() {
+  var el = document.getElementById('page-settings');
+  if (!el || currentUser.role !== 'admin' || document.getElementById('practice-card')) return;
+  var mode = DB.settings.mode || '', c = document.createElement('div'); c.className = 'card'; c.id = 'practice-card';
+  var b = mode === 'live' ? '<p style="font-size:13px">This school is <strong>LIVE</strong>. Practice tools are locked so real data cannot be erased by mistake.</p>'
+    : '<p style="font-size:12px;color:var(--textm);margin-bottom:10px">' + (mode === 'test' ? 'You are in <strong>practice mode</strong>. Test everything. SMS and online payments are off. When ready, click Go live: everything is erased and you start with real data.' : 'Fill the system with realistic test data to try every screen. Later, one button erases it all so you can start with real data.') + '</p>'
+      + '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary btn-sm" onclick="practiceStart()">' + (mode === 'test' ? 'Reload practice data' : 'Start practice mode') + '</button>'
+      + (mode === 'test' ? '<button class="btn btn-sm" style="background:var(--red);color:#fff" onclick="practiceGoLive()">Go live (erase everything)</button>' : '') + '</div>';
+  c.innerHTML = '<div class="ctitle">🧪 Practice mode and Go live</div>' + b; el.appendChild(c);
+}
+(function() {
+  var orig = renderSettings;
+  renderSettings = function() { var r = orig.apply(this, arguments); try { _addPracticeCard(); } catch (e) {} return r; };
+})();
 
 </script>
 </body>
