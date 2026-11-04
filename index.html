@@ -320,7 +320,7 @@ tr:hover td{background:#f9fafb;}
       <input type="password" id="lp" placeholder="Enter password" autocomplete="current-password">
     </div>
     <button class="btn btn-primary" onclick="doLogin()">Sign In →</button>
-    <p style="text-align:center;font-size:11px;color:var(--textm);margin-top:14px;">Adombra School Management &amp; Analytics Platform · v1.0 · build 31Oct-b</p>
+    <p style="text-align:center;font-size:11px;color:var(--textm);margin-top:14px;">Adombra School Management &amp; Analytics Platform · v1.0 · build 31Oct-c</p>
     <div id="conn-result" style="margin-top:8px;font-size:12px;text-align:center;display:none"></div>
   </div>
 </div>
@@ -2256,6 +2256,7 @@ function removeStudent(id) {
 
 // DOWNLOAD TEMPLATES
 function downloadTemplate(type) {
+  if (type === 'student') return downloadStudentTemplate();
   let rows, filename;
   if (type === 'teacher') {
     rows = [
@@ -3641,90 +3642,8 @@ function handleImport(evt, type) {
         showToast('Imported ' + added + ' subjects ✓', 'success');
 
       } else if (type === 'student') {
-        // Pause sync to prevent race condition during large imports
-        if (autoRefreshTimer) { clearInterval(autoRefreshTimer); autoRefreshTimer = null; }
-
-        // Parse all rows first
-        var toAdd = [];
-        rows.slice(1).forEach(function(row){
-          var name = (row[0]||'').toString().trim();
-          var clsRaw = (row[1]||'').toString().trim();
-          var form = (row[2]||'').toString().trim();
-          var admYear = (row[3]||'').toString().trim();
-          if (!name || !clsRaw || name.startsWith('(')) return;
-          var cls = fuzzyMatchClass(clsRaw);
-          if (cls !== clsRaw.toUpperCase().replace(/\s+/g,'')) fuzzyFixed++;
-          if (!DB.classes.includes(cls)) DB.classes.push(cls);
-          if (!DB.students.find(function(s){ return s.name===name && s.class===cls; })) {
-            var ns = {id:uid(), name:name, class:cls, form:form, admissionYear:admYear};
-            DB.students.push(ns);
-            toAdd.push(ns);
-            added++;
-          }
-        });
-
-        if (toAdd.length === 0) {
-          showToast('No new students to import (all already exist)', 'warning');
-          autoRefreshTimer = setInterval(silentRefresh, 30000);
-          renderManage();
-          return;
-        }
-
-        // Show progress toast
-        showToast('Saving ' + toAdd.length + ' students to database…', 'warning');
-
-        // Write in batches of 50 to avoid Supabase rate limits
-        var BATCH = 20; // smaller batches = more reliable
-        var saved = 0, failed = 0;
-        for (var i = 0; i < toAdd.length; i += BATCH) {
-          var batch = toAdd.slice(i, i + BATCH);
-          // Use bulk UPSERT so duplicates don't cause errors
-          var payload = batch.map(function(ns){
-            return {id: ns.id, full_name: ns.name, class_name: ns.class,
-                    form: ns.form || '', admission_year: ns.admissionYear || ''};
-          });
-          var batchWrites = [fetch(SUPA_URL + '/rest/v1/students?on_conflict=id', {
-            method: 'POST',
-            headers: Object.assign({}, HDR, {'Prefer': 'resolution=merge-duplicates,return=minimal'}),
-            body: JSON.stringify(payload)
-          }).then(function(r){
-            if (!r.ok) return r.text().then(function(t){ throw new Error(r.status+': '+t); });
-            return r;
-          })];
-          var results = await Promise.allSettled(batchWrites);
-          results.forEach(function(r){
-            if (r.status === 'fulfilled') saved += batch.length;
-            else {
-              console.error('Batch failed:', r.reason);
-              // Fall back to individual inserts for this batch
-              failed += batch.length; // will retry individually below
-            }
-          });
-          // Small delay between batches to avoid rate limiting
-          if (i + BATCH < toAdd.length) {
-            showToast('Saving... ' + Math.min(i+BATCH, toAdd.length) + ' / ' + toAdd.length, 'warning');
-            await new Promise(function(res){ setTimeout(res, 300); });
-          }
-        }
-
-        await saveDB();
-
-        // Wait a moment for Supabase to process all upserts before syncing
-        if (failed === 0) {
-          await new Promise(function(res){ setTimeout(res, 1000); });
-          await syncFromSupabase(true);
-        } else {
-          // Don't sync if there were errors - keep the local data
-          showToast('Import had errors - keeping local data. Try Fix Sync.', 'warning');
-        }
-        autoRefreshTimer = setInterval(silentRefresh, 30000);
-
-        audit('IMPORT_STUDENTS', saved + ' students saved, ' + failed + ' errors', 'students');
-
-        var msg = saved + ' / ' + toAdd.length + ' students saved to Supabase ✓';
-        if (fuzzyFixed) msg += ' (' + fuzzyFixed + ' class names auto-fixed)';
-        if (failed > 0) msg += ' ⚠ ' + failed + ' write errors';
-        showToast(msg, failed > 0 ? 'warning' : 'success');
+        importStudentsFromRows(rows);
+        return;
       }
 
       renderManage();
@@ -5462,7 +5381,7 @@ function renderSettings() {
 
   // App info
   html += '<div style="text-align:center;padding:16px;color:var(--textm);font-size:11px">'
-    + 'ASMaP \u00b7 Adombra School Management &amp; Analytics Platform \u00b7 v1.0 · build 31Oct-b<br>'
+    + 'ASMaP \u00b7 Adombra School Management &amp; Analytics Platform \u00b7 v1.0 · build 31Oct-c<br>'
     + s.schoolName + ' \u00b7 ' + s.schoolLocation + '</div>';
 
   el.innerHTML = html;
@@ -9468,13 +9387,159 @@ function exportBehaviourExcel() {
 }
 
 // Bulk student import from Excel (admin-prepared template)
-function downloadStudentTemplate() {
-  var rows = [
-    ['FULL NAME','CLASS','FORM','ADMISSION YEAR','BECE INDEX','SURNAME','OTHER NAMES','DATE OF BIRTH (YYYY-MM-DD)','GENDER (Male/Female)','NHIS NUMBER','HOUSE','PROGRAMME','RESIDENTIAL STATUS (Day/Boarding)','PARENT FIRST NAME','PARENT LAST NAME','PARENT PHONE (0XXXXXXXXX)','PARENT EMAIL','HOMETOWN','REGION'],
-    ['KWAME ASANTE','SCI1','SHS1','2024/2025','B4011012345','ASANTE','KWAME','2008-05-12','Male','','TANDOH','GENERAL SCIENCE','Day','MR KOFI','ASANTE','0241234567','','Cape Coast','Central']
-  ];
-  toExcel(rows, 'ASMaP_Student_Import_Template');
+// ===================== STUDENT IMPORT (all student details, checked before saving) =====================
+var _STU_ALIAS = {
+  fullName: ['FULL NAME', 'NAME', 'STUDENT NAME', 'STUDENT'], surname: ['SURNAME', 'LAST NAME', 'FAMILY NAME'], otherNames: ['OTHER NAMES', 'FIRST NAME', 'FIRST NAMES', 'FIRSTNAME', 'GIVEN NAME', 'FORENAMES'],
+  cls: ['CLASS', 'CLASS NAME'], form: ['FORM', 'FORM LEVEL', 'LEVEL'], adm: ['ADMISSION YEAR', 'YEAR OF ADMISSION', 'BATCH', 'BATCH YEAR'],
+  gender: ['GENDER', 'SEX'], dob: ['DATE OF BIRTH', 'DOB', 'BIRTHDATE', 'BIRTH DATE'],
+  parentPrefix: ['PARENT TITLE', 'PARENT PREFIX'], parentFirst: ['PARENT FIRST NAME', 'GUARDIAN NAME', 'GUARDIAN', 'PARENT NAME'], parentLast: ['PARENT LAST NAME', 'PARENT SURNAME', 'GUARDIAN SURNAME'],
+  parentPhone: ['PARENT PHONE', 'GUARDIAN PHONE', 'PARENT CONTACT', 'GUARDIAN CONTACT', 'PHONE', 'CONTACT', 'PARENT PHONE NUMBER'], parentWa: ['PARENT WHATSAPP', 'WHATSAPP'], parentEmail: ['PARENT EMAIL', 'EMAIL'],
+  house: ['HOUSE'], programme: ['PROGRAMME', 'PROGRAM'], residential: ['RESIDENTIAL STATUS', 'RESIDENCE', 'RESIDENTIAL', 'DAY BOARDING'],
+  bece: ['BECE INDEX', 'INDEX NUMBER', 'INDEX NO', 'BECE INDEX NUMBER', 'BECE'], nhis: ['NHIS NUMBER', 'NHIS', 'NHIS NO'],
+  hometown: ['HOMETOWN'], address: ['ADDRESS'], townCity: ['TOWN/CITY', 'TOWN CITY', 'TOWN', 'CITY'], region: ['REGION'],
+  emName: ['EMERGENCY NAME', 'EMERGENCY CONTACT', 'EMERGENCY CONTACT NAME'], emPhone: ['EMERGENCY PHONE', 'EMERGENCY CONTACT PHONE'], emRel: ['EMERGENCY RELATIONSHIP', 'RELATIONSHIP'],
+  health: ['HEALTH CONCERNS', 'HEALTH'], healthDetails: ['HEALTH DETAILS', 'MEDICAL DETAILS']
+};
+var _stuImp = null;
+function _hdrNorm(h) { return String(h == null ? '' : h).replace(/\(.*?\)/g, '').replace(/\*/g, '').replace(/\s+/g, ' ').trim().toUpperCase(); }
+function _normPhone(p) {
+  var raw = String(p == null ? '' : p).trim(); if (!raw) return { v: '', bad: false };
+  var d = raw.replace(/[^\d+]/g, ''); if (d.charAt(0) === '+') d = '+' + d.slice(1).replace(/\+/g, ''); else d = d.replace(/\+/g, '');
+  var digits = d.replace(/\D/g, '');
+  if (d.indexOf('+233') === 0 && digits.length === 12) return { v: d, bad: false };
+  if (digits.indexOf('233') === 0 && digits.length === 12) return { v: '+' + digits, bad: false };
+  if (digits.charAt(0) === '0' && digits.length === 10) return { v: '+233' + digits.slice(1), bad: false };
+  if (digits.length === 9) return { v: '+233' + digits, bad: false };
+  return { v: raw, bad: true };
 }
+function _normDob(v) {
+  if (v == null || v === '') return { v: '', bad: false };
+  if (typeof v === 'number' && v > 15000 && v < 60000) { var d = new Date(Math.round((v - 25569) * 86400 * 1000)); return { v: d.toISOString().split('T')[0], bad: false }; }
+  var t = String(v).trim(), m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (m) return { v: m[1] + '-' + m[2].padStart(2, '0') + '-' + m[3].padStart(2, '0'), bad: false };
+  m = t.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})$/);
+  if (m) return { v: m[3] + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0'), bad: false };
+  return { v: '', bad: true };
+}
+function _stuFormFrom(raw, cls) {
+  var forms = getForms(), dg = String(raw || '').match(/\d/);
+  if (!dg) dg = String(cls || '').match(/^\s*(\d)/);
+  if (!dg) return '';
+  var hit = forms.find(function(f) { return f.indexOf(dg[0]) >= 0; });
+  return hit || ('SHS' + dg[0]);
+}
+function importStudentsFromRows(rows) {
+  var hdr = (rows[0] || []).map(_hdrNorm), idx = {};
+  Object.keys(_STU_ALIAS).forEach(function(k) { for (var i = 0; i < _STU_ALIAS[k].length; i++) { var p = hdr.indexOf(_STU_ALIAS[k][i]); if (p >= 0) { idx[k] = p; break; } } });
+  if (idx.cls === undefined || (idx.fullName === undefined && idx.surname === undefined)) {
+    showToast('The first row must contain the column names (FULL NAME and CLASS at least). Download the template from Manage.', 'error');
+    if (!autoRefreshTimer) autoRefreshTimer = setInterval(silentRefresh, 30000); return;
+  }
+  var get = function(r, k) { var v = idx[k] === undefined ? '' : r[idx[k]]; return v == null ? '' : v; };
+  var gs = function(r, k) { return String(get(r, k)).replace(/\s+/g, ' ').trim(); };
+  var ttc = (typeof _ttCodes === 'function') ? _ttCodes() : null, startY = _startYear(DB.settings.activeYear);
+  var news = [], updates = [], issues = [], seen = {}, newClasses = {}, noPhone = 0, skipped = 0;
+  for (var ri = 1; ri < rows.length; ri++) {
+    var r = rows[ri], first = String(r[0] == null ? '' : r[0]).trim(); if (!r || !r.length || first.indexOf('(') === 0) continue;
+    var rowN = ri + 1, surname = gs(r, 'surname'), other = gs(r, 'otherNames');
+    var name = (gs(r, 'fullName') || (surname + ' ' + other)).replace(/\s+/g, ' ').trim().toUpperCase();
+    if (!name) { if (r.some(function(c) { return c !== '' && c != null; })) { issues.push({ row: rowN, name: '', msg: 'No name', block: true }); skipped++; } continue; }
+    var clsRaw = gs(r, 'cls'); if (!clsRaw) { issues.push({ row: rowN, name: name, msg: 'No class', block: true }); skipped++; continue; }
+    var cls = fuzzyMatchClass(clsRaw), known = DB.classes.indexOf(cls) >= 0 || (ttc && ttc[cls]);
+    if (!known) { newClasses[cls] = 1; issues.push({ row: rowN, name: name, msg: 'Class "' + cls + '" is not in your class list. Check the spelling.', block: false }); }
+    var bece = gs(r, 'bece'), k1 = 'n|' + name + '|' + cls, k2 = bece ? 'b|' + bece : '';
+    if (seen[k1] || (k2 && seen[k2])) { issues.push({ row: rowN, name: name, msg: 'Appears twice in this file', block: true }); skipped++; continue; } seen[k1] = 1; if (k2) seen[k2] = 1;
+    var ph = _normPhone(get(r, 'parentPhone')), wa = _normPhone(get(r, 'parentWa')), em = _normPhone(get(r, 'emPhone')), dob = _normDob(get(r, 'dob'));
+    if (!ph.v) { noPhone++; } else if (ph.bad) issues.push({ row: rowN, name: name, msg: 'Parent phone "' + ph.v + '" does not look right', block: false });
+    if (dob.bad) issues.push({ row: rowN, name: name, msg: 'Date of birth not understood (use YYYY-MM-DD)', block: false });
+    var g = gs(r, 'gender').toLowerCase(), gender = g.charAt(0) === 'f' ? 'Female' : g.charAt(0) === 'm' ? 'Male' : '';
+    var house = gs(r, 'house').toUpperCase(); if (house && getHouses().indexOf(house) < 0) { issues.push({ row: rowN, name: name, msg: 'House "' + house + '" is not in your house list', block: false }); }
+    var prog = gs(r, 'programme').toUpperCase(); if (prog) { var pm = getProgrammes().find(function(p) { return p === prog; }) || getProgrammes().find(function(p) { return p.indexOf(prog) >= 0 || prog.indexOf(p.split(' ')[0]) >= 0; }); if (pm) prog = pm; else issues.push({ row: rowN, name: name, msg: 'Programme "' + prog + '" is not in your programme list', block: false }); }
+    var rs = gs(r, 'residential').toLowerCase(), resid = rs.indexOf('board') >= 0 ? 'Boarding' : rs.indexOf('day') >= 0 ? 'Day' : '';
+    var form = _stuFormFrom(gs(r, 'form'), cls), adm = gs(r, 'adm'), dg = Number((form.match(/\d/) || [0])[0]);
+    if (!adm && startY && dg) adm = (startY - dg + 1) + '/' + (startY - dg + 2);
+    var hc = gs(r, 'health').toLowerCase();
+    var rec = { full_name: name, class_name: cls, form: form, admission_year: adm, batch_year: adm, bece_index: bece, first_names: other.toUpperCase(), surname: surname.toUpperCase(),
+      date_of_birth: dob.v || null, gender: gender, nhis_number: gs(r, 'nhis'), residential_status: resid, house: house, programme: prog,
+      parent_prefix: gs(r, 'parentPrefix'), parent_first_name: gs(r, 'parentFirst'), parent_last_name: gs(r, 'parentLast'), parent_phone: ph.v, parent_whatsapp: wa.v, parent_email: gs(r, 'parentEmail'),
+      hometown: gs(r, 'hometown'), address: gs(r, 'address'), town_city: gs(r, 'townCity'), region: gs(r, 'region'),
+      emergency_name: gs(r, 'emName'), emergency_phone: em.v, emergency_relationship: gs(r, 'emRel'), has_health_concerns: hc.charAt(0) === 'y' || hc === 'true', health_details: gs(r, 'healthDetails') };
+    var ex = DB.students.find(function(x) { return (bece && x.beceIndex === bece) || (x.name === name && x.class === cls); });
+    if (!ex) { news.push(rec); continue; }
+    // existing student: only fill blanks, never overwrite what is already there
+    var map = { form: 'form', admission_year: 'admissionYear', bece_index: 'beceIndex', first_names: 'firstNames', surname: 'surname', date_of_birth: 'dob', gender: 'gender', nhis_number: 'nhis', residential_status: 'residentialStatus', house: 'house', programme: 'programme',
+      parent_prefix: 'parentPrefix', parent_first_name: 'parentFirstName', parent_last_name: 'parentLastName', parent_phone: 'parentPhone', parent_whatsapp: 'parentWhatsapp', parent_email: 'parentEmail', hometown: 'hometown', address: 'address', town_city: 'townCity', region: 'region',
+      emergency_name: 'emergencyName', emergency_phone: 'emergencyPhone', emergency_relationship: 'emergencyRelationship', health_details: 'healthDetails' };
+    var patch = {}, n = 0;
+    var supplied = { form: gs(r, 'form') !== '', admission_year: gs(r, 'adm') !== '' };
+    Object.keys(map).forEach(function(c) { if (supplied.hasOwnProperty(c) && !supplied[c]) return; var cur = ex[map[c]]; if ((cur === '' || cur == null) && rec[c] !== '' && rec[c] != null) { patch[c] = rec[c]; n++; } });
+    if (rec.has_health_concerns && !ex.hasHealthConcerns) { patch.has_health_concerns = true; n++; }
+    if (n) updates.push({ id: ex.id, name: ex.name, patch: patch, n: n });
+  }
+  _stuImp = { news: news, updates: updates, issues: issues, newClasses: Object.keys(newClasses), noPhone: noPhone, skipped: skipped };
+  var blocking = issues.filter(function(x) { return x.block; }), warn = issues.filter(function(x) { return !x.block; });
+  var line = function(x) { return '<div style="font-size:11px;padding:2px 0">Row ' + x.row + (x.name ? ' · ' + _x(x.name) : '') + ': ' + _x(x.msg) + '</div>'; };
+  openModal('Check before importing',
+    '<div style="font-size:13px;line-height:1.7"><div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">'
+    + '<div style="flex:1;min-width:90px;background:var(--g5);border-radius:8px;padding:8px;text-align:center"><div style="font-size:20px;font-weight:800;color:var(--g2)">' + news.length + '</div><div style="font-size:10px">new students</div></div>'
+    + '<div style="flex:1;min-width:90px;background:var(--goldp);border-radius:8px;padding:8px;text-align:center"><div style="font-size:20px;font-weight:800;color:var(--gold)">' + updates.length + '</div><div style="font-size:10px">existing, details added</div></div>'
+    + '<div style="flex:1;min-width:90px;background:var(--redp);border-radius:8px;padding:8px;text-align:center"><div style="font-size:20px;font-weight:800;color:var(--red)">' + skipped + '</div><div style="font-size:10px">rows skipped</div></div></div>'
+    + (noPhone ? '<div style="background:var(--goldp);border-radius:8px;padding:8px 10px;margin-bottom:8px;font-size:12px">📵 <strong>' + noPhone + '</strong> row(s) have no parent phone. Those parents cannot get SMS or use the parent portal until you add one.</div>' : '')
+    + (blocking.length ? '<div style="font-weight:700;color:var(--red);margin-top:6px">Skipped rows</div>' + blocking.slice(0, 10).map(line).join('') + (blocking.length > 10 ? '<div style="font-size:11px">…and ' + (blocking.length - 10) + ' more</div>' : '') : '')
+    + (warn.length ? '<div style="font-weight:700;color:var(--gold);margin-top:6px">Please check (these are still imported)</div><div style="max-height:150px;overflow:auto">' + warn.slice(0, 40).map(line).join('') + (warn.length > 40 ? '<div style="font-size:11px">…and ' + (warn.length - 40) + ' more (download the list)</div>' : '') + '</div>' : '')
+    + (_stuImp.newClasses.length ? '<div style="font-size:11px;color:var(--red);margin-top:6px">New class(es) will be created: ' + _x(_stuImp.newClasses.join(', ')) + '. If these are typing mistakes, fix the file and import again.</div>' : '')
+    + '<div style="font-size:11px;color:var(--textm);margin-top:8px">Students already in the system keep everything they have. The import only fills in blank details.</div>'
+    + '<div style="display:flex;gap:8px;margin-top:10px"><button class="btn btn-primary" style="flex:1" ' + ((news.length || updates.length) ? '' : 'disabled ') + 'onclick="confirmStudentImport()">Import now</button>'
+    + (issues.length ? '<button class="btn btn-outline" onclick="downloadImportIssues()">Download problem list</button>' : '') + '</div></div>');
+  if (!autoRefreshTimer) autoRefreshTimer = setInterval(silentRefresh, 30000);
+}
+function downloadImportIssues() {
+  if (!_stuImp) return; var rows = [['Row', 'Student', 'Problem', 'Skipped?']];
+  _stuImp.issues.forEach(function(x) { rows.push([x.row, x.name, x.msg, x.block ? 'Yes' : 'No']); }); toExcel(rows, 'ASMaP_Student_Import_Problems');
+}
+async function confirmStudentImport() {
+  var imp = _stuImp; if (!imp) return; _stuImp = null; closeModal();
+  if (autoRefreshTimer) { clearInterval(autoRefreshTimer); autoRefreshTimer = null; }
+  showToast('Saving ' + imp.news.length + ' new students and ' + imp.updates.length + ' updates…', 'warning');
+  var saved = 0, failed = 0, upd = 0, updFailed = 0;
+  imp.newClasses.forEach(function(c) { if (DB.classes.indexOf(c) < 0) DB.classes.push(c); });
+  var recs = imp.news.map(function(r) { return Object.assign({ id: uid(), status: 'active', country: 'Ghana' }, r); });
+  for (var i = 0; i < recs.length; i += 40) {
+    var batch = recs.slice(i, i + 40), ok = false;
+    try { var resp = await fetch(SUPA_URL + '/rest/v1/students?on_conflict=id', { method: 'POST', headers: Object.assign({}, HDR, { 'Prefer': 'resolution=merge-duplicates,return=minimal' }), body: JSON.stringify(batch) }); ok = resp.ok; } catch (e) {}
+    if (ok) saved += batch.length;
+    else { for (var j = 0; j < batch.length; j++) { try { await sbPost('students', batch[j]); saved++; } catch (e) { failed++; } } }
+    if (i + 40 < recs.length) { showToast('Saving… ' + Math.min(i + 40, recs.length) + ' / ' + recs.length, 'warning'); await new Promise(function(res) { setTimeout(res, 250); }); }
+  }
+  for (var u = 0; u < imp.updates.length; u++) { try { var okp = await sbPatch('students', imp.updates[u].id, imp.updates[u].patch); if (okp === false) updFailed++; else upd++; } catch (e) { updFailed++; } }
+  await saveDB();
+  audit('IMPORT_STUDENTS', saved + ' new, ' + upd + ' updated, ' + failed + ' failed', 'students');
+  try { await new Promise(function(res) { setTimeout(res, 800); }); await syncFromSupabase(true); } catch (e) {}
+  if (!autoRefreshTimer) autoRefreshTimer = setInterval(silentRefresh, 30000);
+  var msg = saved + ' new students saved' + (upd ? ', ' + upd + ' updated' : '');
+  showToast(msg + (failed || updFailed ? ' ⚠ ' + (failed + updFailed) + ' failed. Try Fix Sync.' : ' ✓'), (failed || updFailed) ? 'warning' : 'success');
+  renderManage();
+}
+function downloadStudentTemplate() {
+  var houses = getHouses(), progs = getProgrammes(), cl = DB.classes.slice(0, 2).concat(['ARTS1', 'SCI1']).slice(0, 2);
+  var head = ['FULL NAME *', 'CLASS *', 'FORM', 'ADMISSION YEAR', 'GENDER (Male/Female)', 'DATE OF BIRTH (YYYY-MM-DD)', 'PARENT TITLE (Mr/Mrs)', 'PARENT FIRST NAME', 'PARENT LAST NAME', 'PARENT PHONE', 'PARENT WHATSAPP', 'PARENT EMAIL',
+    'HOUSE', 'PROGRAMME', 'RESIDENTIAL STATUS (Day/Boarding)', 'BECE INDEX', 'NHIS NUMBER', 'HOMETOWN', 'ADDRESS', 'TOWN/CITY', 'REGION', 'EMERGENCY NAME', 'EMERGENCY PHONE', 'EMERGENCY RELATIONSHIP', 'HEALTH CONCERNS (Yes/No)', 'HEALTH DETAILS'];
+  var ex = function(n, c, f, y, g, d, pf, pl, ph, h, p, rs, b) { return [n, c, f, y, g, d, 'Mr', pf, pl, ph, ph, '', h, p, rs, b, '', 'Cape Coast', 'P.O. Box 1', 'Cape Coast', 'Central', pf + ' ' + pl, ph, 'Parent', 'No', '']; };
+  var wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([head,
+    ex('KWAME ASANTE', cl[0] || 'ARTS1', 'SHS1', '', 'Male', '2009-05-12', 'KOFI', 'ASANTE', '0241234567', houses[0] || 'TANDOH', progs[0] || 'GENERAL ARTS', 'Day', '0123456789'),
+    ex('AMA MENSAH', cl[1] || 'SCI1', 'SHS2', '', 'Female', '2008-11-03', 'ABENA', 'MENSAH', '0201234567', houses[1] || houses[0] || 'ADABIE', progs[1] || progs[0] || 'GENERAL SCIENCE', 'Boarding', '0123456790')]), 'Students');
+  var info = [['HOW TO USE THIS TEMPLATE'], [''], ['1. Fill the "Students" sheet. Delete the two example rows. Keep the first row (the column names).'],
+    ['2. Only FULL NAME and CLASS are required. Everything else is optional, but PARENT PHONE is needed for SMS and the parent portal.'],
+    ['3. FORM and ADMISSION YEAR can be left blank. They are worked out from the class and the current academic year.'],
+    ['4. Phone numbers: 0241234567 or +233241234567 both work.'], ['5. Dates: YYYY-MM-DD (for example 2009-05-12).'],
+    ['6. You can import again later with extra details. Students already in the system keep what they have, and only blank details are filled in.'],
+    ['7. The system shows you a check screen before anything is saved.'], [''], ['VALID CLASSES (use one of these)'], [DB.classes.length ? DB.classes.slice().sort().join(', ') : '(No classes yet. Import the timetable first, then use "Use timetable classes everywhere".)'],
+    [''], ['HOUSES'], [houses.join(', ')], [''], ['PROGRAMMES'], [progs.join(', ')]];
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(info), 'Read me');
+  XLSX.writeFile(wb, 'ASMaP_Student_Import_Template.xlsx');
+}
+// ===================== end student import =====================
 
 function downloadScoresTemplate() {
   var rows = [
