@@ -320,7 +320,7 @@ tr:hover td{background:#f9fafb;}
       <input type="password" id="lp" placeholder="Enter password" autocomplete="current-password">
     </div>
     <button class="btn btn-primary" onclick="doLogin()">Sign In →</button>
-    <p style="text-align:center;font-size:11px;color:var(--textm);margin-top:14px;">Adombra School Management &amp; Analytics Platform · v1.0 · build 31Oct-a</p>
+    <p style="text-align:center;font-size:11px;color:var(--textm);margin-top:14px;">Adombra School Management &amp; Analytics Platform · v1.0 · build 31Oct-b</p>
     <div id="conn-result" style="margin-top:8px;font-size:12px;text-align:center;display:none"></div>
   </div>
 </div>
@@ -351,6 +351,7 @@ tr:hover td{background:#f9fafb;}
   <div id="page-payments" class="page"></div>
   <div id="page-approvals" class="page"></div>
   <div id="page-reports" class="page"></div>
+  <div id="page-treports" class="page"></div>
   <div id="page-manage" class="page"></div>
   <div id="page-audit" class="page"></div>
   <div id="page-lessons" class="page"></div>
@@ -975,6 +976,7 @@ function buildNav() {
 
   // Reports
   if (r==='admin' || (r==='viewer' && hasPerm('reports'))) tabs.push({id:'reports',icon:'📈',label:'Analytics'});
+  if (['admin','supervisor','hod','critical_friend'].includes(r) || (r==='viewer' && hasPerm('reports'))) tabs.push({id:'treports',icon:'📑',label:'Staff Reports'});
 
   // Management
   if (r==='admin') tabs.push({id:'manage',icon:'🗂',label:'Manage'});
@@ -1015,6 +1017,7 @@ function renderPage(id) {
     case 'payments': renderPayments(); break;
     case 'approvals': renderApprovals(); break;
     case 'reports': renderReports(); break;
+    case 'treports': renderStaffReports(); break;
     case 'manage': renderManage(); break;
     case 'audit': renderAudit(); break;
     case 'lessons': renderLessons(); break;
@@ -5459,7 +5462,7 @@ function renderSettings() {
 
   // App info
   html += '<div style="text-align:center;padding:16px;color:var(--textm);font-size:11px">'
-    + 'ASMaP \u00b7 Adombra School Management &amp; Analytics Platform \u00b7 v1.0 · build 31Oct-a<br>'
+    + 'ASMaP \u00b7 Adombra School Management &amp; Analytics Platform \u00b7 v1.0 · build 31Oct-b<br>'
     + s.schoolName + ' \u00b7 ' + s.schoolLocation + '</div>';
 
   el.innerHTML = html;
@@ -7118,6 +7121,168 @@ function exportAlumni() {
   toExcel(rows, 'ASMaP_Alumni');
 }
 // ===================== end close year =====================
+// ===================== STAFF REPORTS: teacher attendance (normal + Extended Teaching), review, Staff of the Month =====================
+var _SR = null, _SOM_MIN = 5;
+var _SR_COL = { ok: '#1a7a3c', late: '#c8860a', abs: '#c0392b', et: '#0a3d1f', norm: '#4a90a4' };
+function _srInit() {
+  if (_SR) return;
+  var t = todayStr();
+  _SR = { from: t.slice(0, 8) + '01', to: t, type: 'all', cls: '', teacher: '', pending: false, month: t.slice(0, 7) };
+}
+function _srIsET(a) { return a.attType === 'extended' || a.period === 'Extended Teaching'; }
+function _srRank(st) { return st === 'on-time' ? 2 : st === 'late' ? 1 : 0; }
+// A teacher with combined classes has one record per class; it counts once (best status wins), same as payroll.
+function _srDedupe(recs) {
+  var m = {};
+  recs.forEach(function(a) { var k = a.teacher + '|' + a.date + '|' + a.period; if (!m[k] || _srRank(a.status) > _srRank(m[k].status)) m[k] = a; });
+  return Object.keys(m).map(function(k) { return m[k]; });
+}
+function _srRecords(f) {
+  return DB.attendance.filter(function(a) {
+    if (!a.date || a.date < f.from || a.date > f.to || a.approvalStatus === 'rejected') return false;
+    if (!f.pending && a.approvalStatus !== 'approved') return false;
+    var et = _srIsET(a);
+    if (f.type === 'normal' && et) return false;
+    if (f.type === 'extended' && !et) return false;
+    if (f.cls && a.class !== f.cls) return false;
+    if (f.teacher && a.teacher !== f.teacher) return false;
+    return true;
+  });
+}
+function _srPct(ok, late, n) { return n ? Math.round((ok + 0.5 * late) / n * 1000) / 10 : 0; }
+function _srStats(recs) {
+  var by = {};
+  _srDedupe(recs).forEach(function(a) {
+    var t = by[a.teacher] = by[a.teacher] || { name: a.teacher, n: 0, ok: 0, late: 0, abs: 0, nN: 0, nE: 0, okN: 0, okE: 0, lateN: 0, lateE: 0, absN: 0, absE: 0 };
+    var et = _srIsET(a), k = a.status === 'on-time' ? 'ok' : a.status === 'late' ? 'late' : 'abs';
+    t.n++; t[k]++; if (et) { t.nE++; t[k + 'E']++; } else { t.nN++; t[k + 'N']++; }
+  });
+  return Object.keys(by).map(function(k) {
+    var t = by[k]; t.pct = _srPct(t.ok, t.late, t.n);
+    // Staff of the Month score: on-time 100%, late 50%, absent 0%; Extended Teaching sessions count double
+    var w = t.nN + 2 * t.nE, got = (t.okN + 0.5 * t.lateN) + 2 * (t.okE + 0.5 * t.lateE);
+    t.score = w ? Math.round(got / w * 1000) / 10 : 0; return t;
+  });
+}
+function srSet(k, v) { _srInit(); _SR[k] = (k === 'pending') ? !!v : v; renderStaffReports(); }
+function srRange(kind) {
+  _srInit(); var d = new Date(), t = todayStr();
+  if (kind === 'week') { var m = new Date(d); m.setDate(d.getDate() - ((d.getDay() + 6) % 7)); _SR.from = m.toISOString().split('T')[0]; }
+  else if (kind === 'month') _SR.from = t.slice(0, 8) + '01';
+  else { var y = getActiveYear(), sy = y ? (y.name.match(/\d{4}/) || [])[0] : t.slice(0, 4); _SR.from = (sy || t.slice(0, 4)) + '-09-01'; if (_SR.from > t) _SR.from = t.slice(0, 4) + '-01-01'; }
+  _SR.to = t; renderStaffReports();
+}
+function _monthLabel(ym) { try { return new Date(+ym.slice(0, 4), +ym.slice(5, 7) - 1, 1).toLocaleString('en-GB', { month: 'long', year: 'numeric' }); } catch (e) { return ym; } }
+function _somList(ym) {
+  var last = new Date(+ym.slice(0, 4), +ym.slice(5, 7), 0).getDate();
+  var recs = _srRecords({ from: ym + '-01', to: ym + '-' + String(last).padStart(2, '0'), type: 'all', cls: '', teacher: '', pending: false });
+  return _srStats(recs).map(function(t) { t.eligible = t.n >= _SOM_MIN; return t; })
+    .sort(function(a, b) { return (b.eligible - a.eligible) || (b.score - a.score) || (b.n - a.n); });
+}
+function _somBlock(list, ym, big) {
+  var el = list.filter(function(t) { return t.eligible; }), medals = ['🥇', '🥈', '🥉'];
+  if (!el.length) return '<div style="font-size:12px;color:var(--textm)">No teacher has ' + _SOM_MIN + ' or more approved sessions in ' + _x(_monthLabel(ym)) + ' yet.</div>';
+  var w = el[0];
+  return '<div style="display:flex;align-items:center;gap:12px;background:linear-gradient(135deg,#0a3d1f,#1a7a3c);color:#fff;border-radius:12px;padding:14px;margin-bottom:10px">'
+    + '<div style="font-size:34px">🏆</div><div><div style="font-size:11px;opacity:.8">STAFF OF THE MONTH · ' + _x(_monthLabel(ym)).toUpperCase() + '</div><div style="font-size:' + (big ? 20 : 17) + 'px;font-weight:800">' + _x(w.name) + '</div>'
+    + '<div style="font-size:12px;opacity:.9">Score ' + w.score + '% · ' + w.n + ' sessions (' + w.nE + ' extended) · ' + w.ok + ' on time, ' + w.late + ' late, ' + w.abs + ' absent</div></div></div>'
+    + el.slice(1, 3).map(function(t, i) { return '<div style="font-size:12px;padding:4px 2px">' + medals[i + 1] + ' <strong>' + _x(t.name) + '</strong> · ' + t.score + '% · ' + t.n + ' sessions</div>'; }).join('');
+}
+function srMonth(v) { _srInit(); _SR.month = v || _SR.month; renderStaffReports(); }
+function srDownloadMonth() {
+  _srInit(); var list = _somList(_SR.month), rows = [['Rank', 'Teacher', 'Score %', 'Sessions', 'Extended', 'On time', 'Late', 'Absent', 'Eligible (min ' + _SOM_MIN + ')']];
+  list.forEach(function(t, i) { rows.push([i + 1, t.name, t.score, t.n, t.nE, t.ok, t.late, t.abs, t.eligible ? 'Yes' : 'No']); });
+  toExcel(rows, 'Staff_of_the_Month_' + _SR.month);
+}
+function srExport() {
+  _srInit(); var st = _srStats(_srRecords(_SR)).sort(function(a, b) { return b.score - a.score; });
+  var rows = [['Teacher', 'Sessions', 'On time', 'Late', 'Absent', 'Punctuality %', 'Normal sessions', 'Normal on time', 'Extended sessions', 'Extended on time', 'Score %']];
+  st.forEach(function(t) { rows.push([t.name, t.n, t.ok, t.late, t.abs, t.pct, t.nN, t.okN, t.nE, t.okE, t.score]); });
+  toExcel(rows, 'Teacher_Attendance_' + _SR.from + '_to_' + _SR.to);
+}
+function srTeacher(name) {
+  _srInit(); var recs = _srRecords(Object.assign({}, _SR, { teacher: name })).sort(function(a, b) { return String(b.date).localeCompare(String(a.date)); });
+  var t = _srStats(recs)[0] || { n: 0, ok: 0, late: 0, abs: 0, pct: 0 };
+  var badge = function(st) { return '<span class="badge ' + (st === 'on-time' ? 'bg' : st === 'late' ? 'bgold' : 'bred') + '">' + _x(st) + '</span>'; };
+  openModal(name, '<div style="font-size:12px;margin-bottom:8px">' + _x(_SR.from) + ' to ' + _x(_SR.to) + ' · <strong>' + t.n + '</strong> sessions · ' + t.ok + ' on time · ' + t.late + ' late · ' + t.abs + ' absent · punctuality <strong>' + t.pct + '%</strong></div>'
+    + '<div class="twrap" style="max-height:340px;overflow:auto"><table><tr><th>Date</th><th>Class</th><th>Subject</th><th>Period</th><th>Type</th><th>Status</th></tr>'
+    + recs.slice(0, 120).map(function(a) { return '<tr><td>' + _x(a.date) + '</td><td>' + _x(a.class) + '</td><td style="font-size:11px">' + _x(a.subject) + '</td><td>' + _x(a.period) + '</td><td>' + (_srIsET(a) ? 'Extended' : 'Normal') + (a.approvalStatus === 'pending' ? ' (pending)' : '') + '</td><td>' + badge(a.status) + '</td></tr>'; }).join('')
+    + '</table></div>' + (recs.length > 120 ? '<div style="font-size:11px;color:var(--textm)">Showing the latest 120 of ' + recs.length + '.</div>' : ''));
+}
+function renderStaffReports() {
+  _srInit(); var el = document.getElementById('page-treports'); if (!el) return;
+  Object.values(activeCharts).forEach(function(c) { try { c.destroy(); } catch (e) {} }); activeCharts = {};
+  var f = _SR, recs = _srRecords(f), uniq = _srDedupe(recs), stats = _srStats(recs).sort(function(a, b) { return b.score - a.score || b.n - a.n; });
+  var tot = uniq.length, ok = uniq.filter(function(a) { return a.status === 'on-time'; }).length, late = uniq.filter(function(a) { return a.status === 'late'; }).length, abs = tot - ok - late;
+  var nE = uniq.filter(_srIsET).length, nN = tot - nE;
+  var pendingN = DB.attendance.filter(function(a) { return a.approvalStatus === 'pending' && a.date >= f.from && a.date <= f.to; }).length;
+  var seen = {}; stats.forEach(function(t) { seen[t.name] = 1; });
+  var notSeen = (f.teacher || f.cls) ? [] : DB.teachers.filter(function(n) { return !seen[n]; });
+  var flagged = stats.filter(function(t) { return (t.n >= 3 && t.pct < 75) || t.abs >= 2; }).sort(function(a, b) { return a.pct - b.pct; });
+  var card = function(v, l, c) { return '<div style="flex:1;min-width:92px;background:var(--surface);border:1px solid var(--grayb);border-radius:10px;padding:10px;text-align:center"><div style="font-size:21px;font-weight:800;color:' + (c || 'var(--text)') + '">' + v + '</div><div style="font-size:10px;color:var(--textm)">' + l + '</div></div>'; };
+  var sel = function(id, cur, opts, all) { return '<select onchange="srSet(\'' + id + '\',this.value)"><option value="">' + all + '</option>' + opts.map(function(o) { return '<option' + (o === cur ? ' selected' : '') + '>' + _x(o) + '</option>'; }).join('') + '</select>'; };
+  var h = '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px"><div class="stitle">&#128209; Staff Reports</div>'
+    + '<button class="btn btn-outline btn-sm" onclick="srExport()">&#11015; Export Excel</button></div>'
+    + '<div class="card"><div class="ctitle"><span class="tic">&#127942;</span>Staff of the Month</div>'
+    + '<div class="fbar"><input type="month" value="' + _x(f.month) + '" onchange="srMonth(this.value)"><button class="btn btn-xs btn-outline" onclick="srDownloadMonth()">Download ranking</button>'
+    + '<button class="btn btn-xs btn-outline" onclick="showTab(\'lessons\');setTimeout(function(){renderLessons(\'month\')},400)">Lesson-log version</button></div>'
+    + _somBlock(_somList(f.month), f.month, true)
+    + '<div style="font-size:10px;color:var(--textm);margin-top:6px">Score = on time counts 100%, late 50%, absent 0%. Extended Teaching sessions count double. At least ' + _SOM_MIN + ' approved sessions are needed.</div></div>'
+    + '<div class="card"><div class="ctitle"><span class="tic">&#128197;</span>Teacher attendance report</div>'
+    + '<div class="fbar" style="flex-wrap:wrap"><button class="btn btn-xs btn-outline" onclick="srRange(\'week\')">This week</button><button class="btn btn-xs btn-outline" onclick="srRange(\'month\')">This month</button><button class="btn btn-xs btn-outline" onclick="srRange(\'year\')">This year</button>'
+    + '<input type="date" value="' + _x(f.from) + '" onchange="srSet(\'from\',this.value)"><input type="date" value="' + _x(f.to) + '" onchange="srSet(\'to\',this.value)"></div>'
+    + '<div class="fbar" style="flex-wrap:wrap"><select onchange="srSet(\'type\',this.value)"><option value="all"' + (f.type === 'all' ? ' selected' : '') + '>Normal + Extended</option><option value="normal"' + (f.type === 'normal' ? ' selected' : '') + '>Normal classes only</option><option value="extended"' + (f.type === 'extended' ? ' selected' : '') + '>Extended Teaching only</option></select>'
+    + sel('cls', f.cls, DB.classes.slice().sort(), 'All classes') + sel('teacher', f.teacher, DB.teachers.slice().sort(), 'All teachers')
+    + '<label style="font-size:12px;display:flex;align-items:center;gap:4px"><input type="checkbox"' + (f.pending ? ' checked' : '') + ' onchange="srSet(\'pending\',this.checked)"> include pending</label></div>'
+    + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0">' + card(tot, 'sessions') + card(tot ? Math.round(ok / tot * 100) + '%' : '-', 'on time', 'var(--g2)') + card(late, 'late', 'var(--gold)') + card(abs, 'absent', 'var(--red)') + card(nN, 'normal') + card(nE, 'extended') + '</div>'
+    + (tot ? '<div class="chart-wrap tall"><canvas id="chart-sr-teach"></canvas></div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-top:12px"><div class="chart-wrap"><canvas id="chart-sr-week"></canvas></div><div class="chart-wrap"><canvas id="chart-sr-split"></canvas></div></div>'
+      : '<div style="padding:16px;font-size:13px;color:var(--textm)">No ' + (f.pending ? '' : 'approved ') + 'attendance records match these filters.</div>') + '</div>'
+    + '<div class="card"><div class="ctitle"><span class="tic">&#128100;</span>By teacher (tap a row for the details)</div><div class="twrap"><table><tr><th>Teacher</th><th style="text-align:right">Normal</th><th style="text-align:right">Extended</th><th style="text-align:right">Late</th><th style="text-align:right">Absent</th><th style="text-align:right">Punctuality</th></tr>'
+    + stats.map(function(t) { return '<tr style="cursor:pointer" data-t="' + encodeURIComponent(t.name) + '" onclick="srTeacher(decodeURIComponent(this.dataset.t))"><td style="font-size:12px"><strong>' + _x(t.name) + '</strong></td><td style="text-align:right">' + t.nN + '</td><td style="text-align:right">' + t.nE + '</td><td style="text-align:right;color:var(--gold)">' + t.late + '</td><td style="text-align:right;color:var(--red)">' + t.abs + '</td><td style="text-align:right"><strong style="color:' + (t.pct >= 90 ? 'var(--g2)' : t.pct >= 75 ? 'var(--gold)' : 'var(--red)') + '">' + t.pct + '%</strong></td></tr>'; }).join('')
+    + '</table></div></div>'
+    + '<div class="card"><div class="ctitle"><span class="tic">&#128269;</span>Needs review</div>'
+    + (pendingN ? '<div style="margin-bottom:8px;font-size:12px"><strong>' + pendingN + '</strong> attendance record(s) in this period are still waiting for approval. <button class="btn btn-xs btn-outline" onclick="showTab(\'approvals\')">Open Approve</button></div>' : '')
+    + (flagged.length ? '<div style="font-size:12px;font-weight:700;margin:6px 0 4px">Low punctuality or repeated absence</div>' + flagged.map(function(t) { return '<div style="font-size:12px;padding:3px 0;cursor:pointer" data-t="' + encodeURIComponent(t.name) + '" onclick="srTeacher(decodeURIComponent(this.dataset.t))">⚠️ <strong>' + _x(t.name) + '</strong> · ' + t.pct + '% on ' + t.n + ' sessions' + (t.abs ? ' · ' + t.abs + ' absent' : '') + '</div>'; }).join('') : '<div style="font-size:12px;color:var(--g2);margin:4px 0">✓ Nobody is flagged in this period.</div>')
+    + (notSeen.length ? '<div style="font-size:12px;font-weight:700;margin:10px 0 4px">No attendance recorded at all in this period (' + notSeen.length + ')</div><div style="font-size:11px;color:var(--textm)">' + _x(notSeen.slice(0, 40).join(', ')) + (notSeen.length > 40 ? '…' : '') + '</div>' : '')
+    + '</div>';
+  el.innerHTML = h;
+  if (!tot || typeof Chart === 'undefined') return;
+  var top = stats.slice().sort(function(a, b) { return b.n - a.n; }).slice(0, 15);
+  activeCharts['sr-teach'] = new Chart(document.getElementById('chart-sr-teach'), { type: 'bar', data: { labels: top.map(function(t) { return t.name; }), datasets: [
+    { label: 'On time', data: top.map(function(t) { return t.ok; }), backgroundColor: _SR_COL.ok }, { label: 'Late', data: top.map(function(t) { return t.late; }), backgroundColor: _SR_COL.late }, { label: 'Absent', data: top.map(function(t) { return t.abs; }), backgroundColor: _SR_COL.abs }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: 'Sessions per teacher (top 15)' } }, scales: { x: { stacked: true, ticks: { maxRotation: 60, font: { size: 9 } } }, y: { stacked: true, beginAtZero: true } } } });
+  var wk = {}; uniq.forEach(function(a) { var d = new Date(a.date + 'T12:00:00'); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); var k = d.toISOString().split('T')[0]; var w = wk[k] = wk[k] || { n: 0, ok: 0, late: 0 }; w.n++; if (a.status === 'on-time') w.ok++; else if (a.status === 'late') w.late++; });
+  var wks = Object.keys(wk).sort();
+  activeCharts['sr-week'] = new Chart(document.getElementById('chart-sr-week'), { type: 'line', data: { labels: wks.map(function(k) { return k.slice(5); }), datasets: [{ label: 'Punctuality %', data: wks.map(function(k) { return _srPct(wk[k].ok, wk[k].late, wk[k].n); }), borderColor: _SR_COL.ok, backgroundColor: 'rgba(26,122,60,.15)', fill: true, tension: .3 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: 'Punctuality by week (week starting)' }, legend: { display: false } }, scales: { y: { min: 0, max: 100 } } } });
+  activeCharts['sr-split'] = new Chart(document.getElementById('chart-sr-split'), { type: 'doughnut', data: { labels: ['Normal classes', 'Extended Teaching'], datasets: [{ data: [nN, nE], backgroundColor: [_SR_COL.norm, _SR_COL.et] }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: 'Normal vs Extended sessions' } } } });
+}
+// ---- Staff of the Month on Home, and a shortcut on the Attendance page
+function _srAllowed() { var r = currentUser.role, p = currentUser.permissions || []; return ['admin', 'supervisor', 'hod', 'critical_friend'].indexOf(r) >= 0 || (r === 'viewer' && p.indexOf('reports') >= 0); }
+(function() {
+  var od = renderDashboard;
+  renderDashboard = function() {
+    var r = od.apply(this, arguments);
+    try {
+      var el = document.getElementById('page-dashboard');
+      if (el && _srAllowed() && !document.getElementById('som-card')) {
+        var t = todayStr(), cur = t.slice(0, 7), d = new Date(+cur.slice(0, 4), +cur.slice(5, 7) - 2, 1), prev = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+        var ym = _somList(cur).some(function(x) { return x.eligible; }) ? cur : prev, c = document.createElement('div'); c.className = 'card'; c.id = 'som-card';
+        c.innerHTML = '<div class="ctitle"><span class="tic">&#127942;</span>Staff of the Month</div>' + _somBlock(_somList(ym), ym, false) + '<button class="btn btn-outline btn-sm" style="margin-top:6px" onclick="showTab(\'treports\')">Open staff reports</button>';
+        el.appendChild(c);
+      }
+    } catch (e) {}
+    return r;
+  };
+  var oa = renderAttendance;
+  renderAttendance = function() {
+    var r = oa.apply(this, arguments);
+    try { var el = document.getElementById('page-attendance'); if (el && _srAllowed() && !document.getElementById('att-rep-link')) { var b = document.createElement('div'); b.id = 'att-rep-link'; b.style.cssText = 'margin-bottom:10px'; b.innerHTML = '<button class="btn btn-outline btn-sm" onclick="showTab(\'treports\')">&#128209; Teacher reports &amp; Staff of the Month</button>'; el.insertBefore(b, el.firstChild); } } catch (e) {}
+    return r;
+  };
+})();
+// ===================== end staff reports =====================
 // ===================== end fee schedule =====================
 
 // SMS PAGE RENDER
