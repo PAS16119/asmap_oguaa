@@ -320,7 +320,7 @@ tr:hover td{background:#f9fafb;}
       <input type="password" id="lp" placeholder="Enter password" autocomplete="current-password">
     </div>
     <button class="btn btn-primary" onclick="doLogin()">Sign In →</button>
-    <p style="text-align:center;font-size:11px;color:var(--textm);margin-top:14px;">Adombra School Management &amp; Analytics Platform · v1.0 · build 31Oct-d</p>
+    <p style="text-align:center;font-size:11px;color:var(--textm);margin-top:14px;">Adombra School Management &amp; Analytics Platform · v1.0 · build 31Oct-f</p>
     <div id="conn-result" style="margin-top:8px;font-size:12px;text-align:center;display:none"></div>
   </div>
 </div>
@@ -484,13 +484,36 @@ function mapProfile(p) {
 }
 
 async function sbGet(table, params='') {
-  const r = await fetch(`${SUPA_URL}/rest/v1/${table}?${params}`, { headers: HDR });
-  if (!r.ok) {
-    const err = await r.text();
-    console.error('sbGet FAILED', table, r.status, err);
-    return [];
+  // Supabase never returns more than 1000 rows in one request, even when a bigger limit is asked for.
+  // So a request for more than 1000 rows is read in pages of 1000 until everything has arrived.
+  var lm = /(?:^|&)limit=(\d+)/.exec(params), want = lm ? parseInt(lm[1], 10) : 1000;
+  if (want <= 1000) {
+    const r = await fetch(`${SUPA_URL}/rest/v1/${table}?${params}`, { headers: HDR });
+    if (!r.ok) {
+      const err = await r.text();
+      console.error('sbGet FAILED', table, r.status, err);
+      return [];
+    }
+    return r.json();
   }
-  return r.json();
+  var base = params.replace(/(^|&)(limit|offset)=\d+/g, '').replace(/^&/, ''), om = /(?:^|&)order=([^&]*)/.exec(base);
+  // a stable order (ending in id) is needed so no row is skipped or repeated between pages
+  if (!om) base += (base ? '&' : '') + 'order=id';
+  else if (!om[1].split(',').some(function(t) { return t.split('.')[0] === 'id'; })) base = base.replace(/(^|&)order=([^&]*)/, '$1order=$2,id');
+  var out = [], off = 0;
+  while (out.length < want) {
+    var take = Math.min(1000, want - out.length);
+    var pr = await fetch(`${SUPA_URL}/rest/v1/${table}?${base}&limit=${take}&offset=${off}`, { headers: HDR });
+    if (!pr.ok) {
+      console.error('sbGet FAILED', table, pr.status, await pr.text());
+      if (off > 0 && typeof showToast === 'function') showToast('Only part of "' + table + '" could be loaded. Refresh to try again.', 'warning');
+      return out;
+    }
+    var rows = await pr.json(); out = out.concat(rows);
+    if (rows.length < take) break;
+    off += rows.length;
+  }
+  return out;
 }
 async function sbPost(table, body) {
   const r = await fetch(`${SUPA_URL}/rest/v1/${table}`, { method:'POST', headers: HDR, body: JSON.stringify(body) });
@@ -656,7 +679,7 @@ async function syncFromSupabase(silent=false) {
       }));
     }
     // Attendance
-    const att = await sbGet('attendance', 'select=*&order=created_at.desc&limit=5000');
+    const att = await sbGet('attendance', 'select=*&order=created_at.desc&limit=20000');
     if (att && att.length >= DB.attendance.length) DB.attendance = att.map(a=>({
       id:a.id, teacher:a.teacher_name, class:a.class_name, subject:a.subject_name,
       period:a.period, date:a.date, status:a.status, attType:a.att_type||'normal',
@@ -665,7 +688,7 @@ async function syncFromSupabase(silent=false) {
       recordedBy:a.recorded_by, recordedByName:a.recorded_by_name||'', ts:new Date(a.created_at).getTime()
     }));
     // Payments
-    const pays = await sbGet('payments', 'select=*&order=created_at.desc&limit=5000');
+    const pays = await sbGet('payments', 'select=*&order=created_at.desc&limit=20000');
     // Only replace if Supabase has at least as many records as local (prevents overwrite on import)
     if (pays && pays.length >= DB.payments.length) DB.payments = pays.map(p=>({
       id:p.id, student:p.student_name, class:p.class_name, purpose:p.purpose||'',
@@ -685,14 +708,14 @@ async function syncFromSupabase(silent=false) {
       amount:parseFloat(a.amount), note:a.note||'', addedBy:a.added_by, ts:new Date(a.created_at).getTime()
     }));
     // Allocations
-    const allocs = await sbGet('payment_allocations', 'select=*&order=created_at.desc&limit=5000');
+    const allocs = await sbGet('payment_allocations', 'select=*&order=created_at.desc&limit=20000');
     if (allocs && allocs.length >= 0) DB.allocations = allocs.map(a=>({
       id:a.id, paymentId:a.payment_id, student:a.student_name, class:a.class_name,
       purpose:a.purpose, amount:parseFloat(a.amount), settledBy:a.settled_by,
       settledAt:a.settled_at, ts:new Date(a.created_at).getTime()
     }));
     // Installments
-    const installs = await sbGet('payment_installments', 'select=*&order=date.desc&limit=5000');
+    const installs = await sbGet('payment_installments', 'select=*&order=date.desc&limit=20000');
     if (installs && installs.length >= 0) DB.installments = installs.map(i=>({
       id:i.id, student:i.student_name, class:i.class_name, amount:parseFloat(i.amount),
       date:i.date, recordedBy:i.recorded_by, recordedByName:i.recorded_by_name
@@ -1113,8 +1136,8 @@ function renderDashboard() {
     html += recent.map(function(a) {
       var isET = a.attType === 'extended' || a.period === 'Extended Teaching';
       return '<div class="arow">'
-        + '<div><div class="aname">' + a.teacher + '</div>'
-        + '<div class="asub">' + a.subject + ' · ' + a.class + ' · ' + a.period + ' · ' + a.date + '</div></div>'
+        + '<div><div class="aname">' + _x(a.teacher) + '</div>'
+        + '<div class="asub">' + _x(a.subject) + ' · ' + a.class + ' · ' + a.period + ' · ' + a.date + '</div></div>'
         + '<div style="display:flex;gap:6px;align-items:center">'
         + '<span class="badge ' + (isET?'bg':'bgray') + '" style="font-size:10px">' + (isET?'ET':'Normal') + '</span>'
         + '<span class="ttag ' + (a.status==='on-time'?'ton':a.status==='late'?'tlate':'tabsent') + '">' + (a.status==='on-time'?'On time':cap(a.status)) + '</span>'
@@ -1132,7 +1155,7 @@ function renderDashboard() {
         + '<div class="twrap"><table>'
         + '<tr><th>Teacher</th><th>ET Sessions</th><th>Normal</th><th>Est. Pay (GHS)</th></tr>'
         + top.map(function(t) {
-            return '<tr><td style="font-size:11px">' + t.name + '</td><td><span class="badge bg">' + t.sessions
+            return '<tr><td style="font-size:11px">' + _x(t.name) + '</td><td><span class="badge bg">' + t.sessions
               + '</span></td><td><span class="badge bgray">' + (t.normSessions||0)
               + '</span></td><td><strong>' + t.pay + '</strong></td></tr>';
           }).join('')
@@ -1177,8 +1200,8 @@ function buildAttRow(a, locked) {
   var parts = [
     '<div class="arow">',
     '<div>',
-    '<div class="aname">' + a.teacher + '</div>',
-    '<div class="asub">' + a.subject + ' · ' + a.class + ' · ' + a.period + '</div>',
+    '<div class="aname">' + _x(a.teacher) + '</div>',
+    '<div class="asub">' + _x(a.subject) + ' · ' + a.class + ' · ' + a.period + '</div>',
     '<div class="asub">' + a.date + ' · by ' + (a.recordedByName||'') + '</div>',
     '</div>',
     '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">',
@@ -1493,7 +1516,7 @@ function renderPayments(filters) {
       </select>
       <select id="pf-purpose" onchange="applyPayFilter()">
         <option value="">All Purposes</option>
-        ${DB.purposes.map(p=>`<option value="${p.name}" ${filters.purpose===p.name?'selected':''}>${p.name}</option>`).join('')}
+        ${DB.purposes.map(p=>`<option value="${_x(p.name)}" ${filters.purpose===p.name?'selected':''}>${_x(p.name)}</option>`).join('')}
       </select>
       <select id="pf-status" onchange="applyPayFilter()">
         <option value="">All Status</option>
@@ -1577,7 +1600,7 @@ function renderUnpaidSection(classes, filterCls) {
       const pct = total > 0 ? Math.min(100, Math.round(paid/total*100)) : 0;
       const dotClass = pct===0?'udot-unpaid':pct<100?'udot-partial':'udot-paid';
       html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--grayb);font-size:12px">
-        <div><span class="unpaid-dot ${dotClass}"></span>${s.name}</div>
+        <div><span class="unpaid-dot ${dotClass}"></span>${_x(s.name)}</div>
         <div style="text-align:right">
           <div>GHS ${paid} / ${total}</div>
           <div class="pay-bar" style="width:80px"><div class="pay-bar-fill" style="width:${pct}%;background:${pct===100?'var(--g3)':pct>0?'var(--gold2)':'var(--red)'}"></div></div>
@@ -1686,7 +1709,7 @@ function editPay(id) {
   openModal('Edit Payment', `
     <div class="fgrp"><label>AMOUNT (GHS)</label><input type="number" id="ep-amount" value="${p.amount}" min="0" step="0.01"></div>
     <div class="fgrp"><label>PURPOSE</label>
-      <select id="ep-purpose">${DB.purposes.map(pp=>`<option ${pp.name===p.purpose?'selected':''}>${pp.name}</option>`).join('')}</select>
+      <select id="ep-purpose">${DB.purposes.map(pp=>`<option ${pp.name===p.purpose?'selected':''}>${_x(pp.name)}</option>`).join('')}</select>
     </div>
     ${currentUser.role==='admin'?`<div class="fgrp"><label>EDIT REASON (required)</label><textarea id="ep-note" rows="2" style="resize:none">${p.approvalNote||''}</textarea></div>`:''}
     <button class="btn btn-primary" onclick="saveEditPay('${id}')">Save Changes</button>
@@ -1945,7 +1968,7 @@ function renderApprovals() {
       var toET = getETAmountFromPayments([p]);
       var allocInputs = buildAllocInputs(p.id);
       html += '<div class="apcard">'
-        + '<div class="apcard-title">' + p.student + ' &mdash; ' + p.class + '</div>'
+        + '<div class="apcard-title">' + _x(p.student) + ' &mdash; ' + p.class + '</div>'
         + '<div class="apcard-sub">Total: GHS ' + total + ' &bull; ET: GHS ' + toET
         + ' &bull; <span style="color:var(--gold)">Unallocated: GHS ' + unalloc + '</span></div>'
         + allocInputs
@@ -1962,7 +1985,7 @@ function renderApprovals() {
       + confPay.slice(0,30).map(function(p){
           var total = p.rawAmount||p.amount;
           var unalloc = p.unallocated||0;
-          return '<tr><td style="font-size:11px">' + p.student + '</td><td>' + p.class
+          return '<tr><td style="font-size:11px">' + _x(p.student) + '</td><td>' + p.class
             + '</td><td>GHS ' + total + '</td>'
             + '<td style="color:var(--g2)">GHS ' + getETAmountFromPayments([p]) + '</td>'
             + '<td>' + (unalloc>0 ? '<span class="badge bgold">GHS '+unalloc+'</span>' : '<span class="badge bg">Settled</span>') + '</td>'
@@ -1974,7 +1997,7 @@ function renderApprovals() {
 
 function buildApprovalCard(cfg) {
   return '<div class="apcard">'
-    + '<div class="apcard-title">' + cfg.title + '</div>'
+    + '<div class="apcard-title">' + _x(cfg.title) + '</div>'
     + '<div class="apcard-sub">' + cfg.sub1 + '</div>'
     + '<div class="apcard-sub">' + cfg.sub2 + '</div>'
     + (cfg.extra || '')
@@ -1988,7 +2011,7 @@ function buildApprovalCard(cfg) {
 
 function buildPayApprovalCard(p, col, sub1, allocHtml, unalloc) {
   return '<div class="apcard">'
-    + '<div class="apcard-title">' + p.student + ' &mdash; ' + p.class + '</div>'
+    + '<div class="apcard-title">' + _x(p.student) + ' &mdash; ' + p.class + '</div>'
     + '<div class="apcard-sub">' + sub1 + '</div>'
     + '<div class="apcard-sub">By: ' + (col ? col.name : '?') + ' &bull; ' + p.date + '</div>'
     + allocHtml
@@ -2054,7 +2077,7 @@ function renderClassPayDetail(cls) {
   if (!pays.length) return '<p style="color:var(--textm);font-size:13px">No payments for this class.</p>';
   return `<div class="twrap"><table>
     <tr><th>Student</th><th>Purpose</th><th>GHS</th><th>Status</th><th>Date</th></tr>
-    ${pays.map(p=>`<tr><td>${p.student}</td><td>${p.purpose}</td><td>${p.amount}</td>
+    ${pays.map(p=>`<tr><td>${_x(p.student)}</td><td>${_x(p.purpose)}</td><td>${p.amount}</td>
       <td><span class="badge ${p.approvalStatus==='confirmed'?'bg':'bgold'}">${cap(p.approvalStatus)}</span></td>
       <td>${p.date}</td></tr>`).join('')}
   </table></div>`;
@@ -2148,7 +2171,7 @@ function renderManage() {
       <div class="twrap"><table>
         <tr><th>Purpose</th><th>Expected (GHS)</th><th></th></tr>
         ${DB.purposes.map(p=>`<tr>
-          <td>${p.name}</td>
+          <td>${_x(p.name)}</td>
           <td><input type="number" value="${p.expected}" style="width:80px;border:1px solid var(--grayb);border-radius:5px;padding:4px 7px;font-size:12px" onchange="updatePurposeAmt('${p.id}',this.value)"></td>
           <td><button class="btn btn-xs btn-outline" onclick="removePurpose('${p.id}')">🗑</button></td>
         </tr>`).join('')}
@@ -2162,7 +2185,7 @@ function renderManage() {
       <div class="twrap"><table>
         <tr><th>Name</th><th>Username</th><th>Role</th><th>Classes</th><th></th></tr>
         ${DB.users.map(u=>`<tr>
-          <td style="font-size:12px">${u.name}</td><td style="font-size:11px">${u.username}</td>
+          <td style="font-size:12px">${_x(u.name)}</td><td style="font-size:11px">${_x(u.username)}</td>
           <td><span class="badge ${u.role==='admin'?'bred':u.role==='coordinator'?'bgold':'bblue'}">${u.role}</span></td>
           <td style="font-size:11px">${(u.classes||[]).join(', ')||'—'}</td>
           <td>${u.id!==currentUser.id?`<button class="btn btn-xs btn-outline" onclick="removeUser('${u.id}')">🗑</button>`:''}</td>
@@ -2181,7 +2204,7 @@ function renderManage() {
     <div class="card">
       <div class="ctitle"><span class="tic">📅</span>Academic Years</div>
       ${DB.years.map(y=>`<div class="info-row">
-        <div><strong>${y.name}</strong>${y.active?' <span class="badge bg">Active</span>':''}</div>
+        <div><strong>${_x(y.name)}</strong>${y.active?' <span class="badge bg">Active</span>':''}</div>
         <div style="display:flex;gap:6px">
           ${!y.active?`<button class="btn btn-xs btn-outline" onclick="setActiveYear('${y.id}')">Activate</button>`:''}
           <button class="btn btn-xs btn-outline" onclick="archiveYear('${y.id}')">Archive</button>
@@ -2640,7 +2663,7 @@ async function submitAddUser() {
   var phone    = (document.getElementById('nu-phone')||{}).value||'';
   var role     = document.getElementById('nu-role').value;
   if (!name||!username||!password) { showToast('Fill name, username and password','error'); return; }
-  if (password.length < 6) { showToast('Password must be at least 6 characters','error'); return; }
+  if (password.length < 10 || /^\d+$/.test(password)) { showToast('Password must be at least 10 characters and not only numbers','error'); return; }
   if (DB.users.find(function(u){ return u.username===username; })) { showToast('Username taken','warning'); return; }
 
   var classes = [];
@@ -2963,7 +2986,7 @@ function renderLedger() {
               : overallStatus==='partial' ? 'background:rgba(200,134,10,0.04)' : '';
 
     html += '<tr style="' + rowBg + '">'
-      + '<td style="font-size:12px;color:' + (isPaid?'var(--text)':'var(--textm)') + '">' + d.name + '</td>'
+      + '<td style="font-size:12px;color:' + (isPaid?'var(--text)':'var(--textm)') + '">' + _x(d.name) + '</td>'
       + '<td style="text-align:right;font-weight:700;color:' + (isPaid?'var(--g2)':'var(--textm)') + '">'
       + (isPaid ? 'GHS ' + d.total : '<span style="color:var(--grayb)">—</span>') + '</td>'
       + purposes.map(function(pur){
@@ -3141,7 +3164,7 @@ function printReceipt(id) {
     + '<span style="color:#666;font-size:11px">Official Payment Receipt</span>'
     + '</div>'
     + '<h3>Student Details</h3>'
-    + '<table><tr><td style="padding:3px 8px;color:#555">Name</td><td style="padding:3px 8px"><strong>' + p.student + '</strong></td></tr>'
+    + '<table><tr><td style="padding:3px 8px;color:#555">Name</td><td style="padding:3px 8px"><strong>' + _x(p.student) + '</strong></td></tr>'
     + '<tr><td style="padding:3px 8px;color:#555">Class</td><td style="padding:3px 8px">' + p.class + '</td></tr>'
     + '<tr><td style="padding:3px 8px;color:#555">Date</td><td style="padding:3px 8px">' + p.date + '</td></tr>'
     + '<tr><td style="padding:3px 8px;color:#555">Receipt No.</td><td style="padding:3px 8px;font-size:11px;color:#888">' + id.slice(-8).toUpperCase() + '</td></tr>'
@@ -3200,7 +3223,7 @@ function renderTeacherSummaryReport() {
     var attRate = (t.sessions+t.normSessions) > 0 ? Math.round(t.sessions/(t.sessions+t.normSessions)*100) : 0;
     var latenessRate = t.sessions > 0 ? Math.round(t.late/t.sessions*100) : 0;
     return '<tr>'
-      + '<td style="font-size:11px">' + (i+1) + '. ' + t.name + '</td>'
+      + '<td style="font-size:11px">' + (i+1) + '. ' + _x(t.name) + '</td>'
       + '<td style="text-align:center"><span class="badge bg">' + t.sessions + '</span></td>'
       + '<td style="text-align:center"><span class="badge bgray">' + (t.normSessions||0) + '</span></td>'
       + '<td style="text-align:center"><span class="badge bgold">' + t.late + '</span></td>'
@@ -4062,13 +4085,13 @@ function openCoordDetail(coordName) {
     }
     var pct = total > 0 ? Math.round(allocAmt/total*100) : 0;
     return '<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--grayb);font-size:13px">'
-      + '<span>' + pur.name + '</span>'
+      + '<span>' + _x(pur.name) + '</span>'
       + '<span><strong>GHS ' + allocAmt.toLocaleString() + '</strong> <span style="color:var(--textm);font-size:11px">(' + pct + '%)</span></span>'
       + '</div>';
   }).join('');
 
   var payRows = myPays.sort(function(a,b){ return b.ts-a.ts; }).slice(0,30).map(function(p) {
-    return '<tr><td>' + p.date + '</td><td style="font-size:11px">' + p.student + '</td><td>' + p.class + '</td>'
+    return '<tr><td>' + p.date + '</td><td style="font-size:11px">' + _x(p.student) + '</td><td>' + p.class + '</td>'
       + '<td>GHS ' + (p.rawAmount||p.amount) + '</td>'
       + '<td><span class="badge ' + (p.approvalStatus==='confirmed'?'bg':p.approvalStatus==='pending'?'bgold':'bred') + '">' + cap(p.approvalStatus) + '</span></td></tr>';
   }).join('');
@@ -4105,7 +4128,7 @@ function renderReports() {
 
     var coordTableRows = rows.map(function(r) {
     return '<tr style="cursor:pointer" data-coord="' + encodeURIComponent(r.name) + '" onclick="openCoordDetail(decodeURIComponent(this.dataset.coord))">'
-      + '<td><strong>' + r.name + '</strong><div style="font-size:10px;color:var(--textm)">' + (r.classes.join(', ')||'All') + '</div></td>'
+      + '<td><strong>' + _x(r.name) + '</strong><div style="font-size:10px;color:var(--textm)">' + (r.classes.join(', ')||'All') + '</div></td>'
       + purposes.map(function(pur){ return '<td style="text-align:right">' + (r.byPurpose[pur]?'GHS '+r.byPurpose[pur].toLocaleString():'-') + '</td>'; }).join('')
       + '<td style="text-align:right"><strong>GHS ' + r.total.toLocaleString() + '</strong></td>'
       + '</tr>';
@@ -4283,7 +4306,7 @@ async function changePassword() {
   var con  = (document.getElementById('cp-new2')||{}).value || '';
   if (!oldP || !newP || !con) { showToast('Fill all password fields','error'); return; }
   if (newP !== con) { showToast('New passwords do not match','error'); return; }
-  if (newP.length < 6) { showToast('Password must be at least 6 characters','error'); return; }
+  if (newP.length < 10 || /^\d+$/.test(newP)) { showToast('Password must be at least 10 characters and not only numbers','error'); return; }
   if (newP === oldP) { showToast('Choose a password different from the current one','error'); return; }
   var ok = await authSignIn(currentUser.username, oldP);
   if (!ok) { showToast('Current password incorrect','error'); return; }
@@ -4304,7 +4327,7 @@ function openEditUser(id) {
   openModal('Edit User — '+(u.name||u.username),
     '<div class="fgrp"><label>FULL NAME</label><input type="text" id="eu-name" value="'+(u.name||'').replace(/"/g,'&quot;')+'"></div>'
     +'<div class="fgrp"><label>USERNAME</label><input type="text" id="eu-user" value="'+u.username+'"></div>'
-    +'<div class="fgrp"><label>NEW TEMPORARY PASSWORD (leave blank to keep current; min 6 characters)</label><input type="password" id="eu-pass" placeholder="Leave blank to keep"></div>'
+    +'<div class="fgrp"><label>NEW TEMPORARY PASSWORD (leave blank to keep current; min 10 characters)</label><input type="password" id="eu-pass" placeholder="Leave blank to keep"></div>'
     +'<div class="fgrp"><label>ROLE</label><select id="eu-role" onchange="toggleEUPerms()">'
     +[['coordinator','Coordinator'],['supervisor','Supervisor'],['hod','HOD'],['critical_friend','Critical Friend'],
       ['form_master','Form Master/Mistress'],['house_master','House Master/Mistress'],['sr_house_master','Senior House Master/Mistress'],
@@ -4342,7 +4365,7 @@ async function saveEditUser(id) {
     document.querySelectorAll('.eu-perm-cb:checked').forEach(function(cb){ perms.push(cb.value); });
   } else { perms = u.permissions||[]; }
   if (!name.trim() || !uname.trim()) { showToast('Name and username required','error'); return; }
-  if (pass && pass.length < 6) { showToast('Password must be at least 6 characters','error'); return; }
+  if (pass && (pass.length < 10 || /^\d+$/.test(pass))) { showToast('Password must be at least 10 characters and not only numbers','error'); return; }
   var payload = { legacy_id:id, full_name:name.trim(), username:uname.trim(), role:role, assigned_classes:classes, permissions:perms };
   if (pass) payload.password = pass;
   try { await callAdminUsers('update_user', payload); }
@@ -4720,7 +4743,7 @@ function renderViewerDashboard() {
   // Account info card
   html += '<div class="card"><div class="ctitle"><span class="tic">&#128100;</span>My Account</div>'
     + '<table style="width:100%;font-size:13px"><tbody>'
-    + '<tr><td style="color:var(--textm);padding:4px 0;width:120px">Name</td><td><strong>' + currentUser.name + '</strong></td></tr>'
+    + '<tr><td style="color:var(--textm);padding:4px 0;width:120px">Name</td><td><strong>' + _x(currentUser.name) + '</strong></td></tr>'
     + '<tr><td style="color:var(--textm);padding:4px 0">Role</td><td><span class="badge bgray">Superintendent</span></td></tr>'
     + '<tr><td style="color:var(--textm);padding:4px 0">School</td><td>' + s.schoolName + '</td></tr>'
     + '<tr><td style="color:var(--textm);padding:4px 0">Year</td><td>' + s.activeYear + '</td></tr>'
@@ -5383,7 +5406,7 @@ function renderSettings() {
 
   // App info
   html += '<div style="text-align:center;padding:16px;color:var(--textm);font-size:11px">'
-    + 'ASMaP \u00b7 Adombra School Management &amp; Analytics Platform \u00b7 v1.0 · build 31Oct-d<br>'
+    + 'ASMaP \u00b7 Adombra School Management &amp; Analytics Platform \u00b7 v1.0 · build 31Oct-f<br>'
     + s.schoolName + ' \u00b7 ' + s.schoolLocation + '</div>';
 
   el.innerHTML = html;
@@ -5778,8 +5801,7 @@ async function lessonReport(from, to) {
   from = from || dd.toISOString().split('T')[0]; to = to || td;
   var recs = [];
   try {
-    var r = await fetch(SUPA_URL + '/rest/v1/lesson_attendance?att_date=gte.' + from + '&att_date=lte.' + to + '&select=*&limit=5000', { headers: HDR });
-    recs = r.ok ? await r.json() : [];
+    recs = await sbGet('lesson_attendance', 'att_date=gte.' + from + '&att_date=lte.' + to + '&select=*&limit=50000');
   } catch (e) {}
   recs.forEach(_normRec);
   var T = {}, C = {}, sched = 0, d = new Date(from + 'T12:00:00'), end = new Date(to + 'T12:00:00');
@@ -5820,8 +5842,7 @@ async function lessonMonth(ym) {
   var body = document.getElementById('lsn-body'); ym = ym || todayStr().slice(0, 7);
   var last = new Date(+ym.slice(0, 4), +ym.slice(5, 7), 0).getDate(), from = ym + '-01', to = ym + '-' + String(last).padStart(2, '0'), recs = [];
   try {
-    var r = await fetch(SUPA_URL + '/rest/v1/lesson_attendance?att_date=gte.' + from + '&att_date=lte.' + to + '&select=*&limit=10000', { headers: HDR });
-    recs = r.ok ? await r.json() : [];
+    recs = await sbGet('lesson_attendance', 'att_date=gte.' + from + '&att_date=lte.' + to + '&select=*&limit=50000');
   } catch (e) {}
   recs.forEach(_normRec);
   var S = {}, byName = {};
@@ -5873,10 +5894,8 @@ async function lessonExt(from, to) {
   from = from || td.slice(0, 8) + '01'; to = to || td; _extRange = [from, to];
   var recs = [], dec = {};
   try {
-    var r = await fetch(SUPA_URL + '/rest/v1/lesson_attendance?period=eq.9&att_date=gte.' + from + '&att_date=lte.' + to + '&select=*&limit=5000', { headers: HDR });
-    recs = r.ok ? await r.json() : [];
-    var d = await fetch(SUPA_URL + '/rest/v1/ext_decisions?select=*&limit=5000', { headers: HDR });
-    (d.ok ? await d.json() : []).forEach(function(x) { dec[x.id] = x; });
+    recs = await sbGet('lesson_attendance', 'period=eq.9&att_date=gte.' + from + '&att_date=lte.' + to + '&select=*&limit=50000');
+    (await sbGet('ext_decisions', 'select=*&limit=50000')).forEach(function(x) { dec[x.id] = x; });
   } catch (e) {}
   recs.forEach(_normRec);
   var norm = function(n) { return String(n || '').trim().replace(/\s+/g, ' ').toUpperCase(); }, map = { present: 'on-time', late: 'late', absent: 'absent' }, P = {}, M = {};
@@ -8206,7 +8225,7 @@ syncFromSupabase = async function(silent) {
   var result = await _origSync(silent);
   // Load scores
   try {
-    var sc = await sbGet('scores','select=*&order=created_at.desc&limit=5000');
+    var sc = await sbGet('scores','select=*&order=created_at.desc&limit=20000');
     if (sc&&sc.length) DB.scores = sc.map(function(s){ return {id:s.id,student:s.student_name,studentId:s.student_id,class:s.class_name,subject:s.subject,term:s.term,academicYear:s.academic_year,classScore:parseFloat(s.class_score||0),examScore:parseFloat(s.exam_score||0),total:parseFloat(s.total||0),grade:s.grade,enteredBy:s.entered_by,enteredByName:s.entered_by_name}; });
   } catch(e){}
   // Load PTA meetings
@@ -8226,7 +8245,7 @@ syncFromSupabase = async function(silent) {
   } catch(e){}
   // Load behaviour records
   try {
-    var br = await sbGet('behaviour_records','select=*&order=created_at.desc&limit=5000');
+    var br = await sbGet('behaviour_records','select=*&order=created_at.desc&limit=20000');
     if (br&&br.length) DB.behaviourRecords = br.map(function(b){ return {id:b.id,student:b.student_name,class:b.class_name,house:b.house,conductScore:b.conduct_score,conductGrade:b.conduct_grade,remark:b.house_master_remark,term:b.term,academicYear:b.academic_year,enteredBy:b.entered_by,enteredByName:b.entered_by_name}; });
   } catch(e){}
   // Load prefect reports
@@ -9611,6 +9630,27 @@ async function _doTeacherRename(old, nu, info, merge) {
   renderManage();
 }
 // ===================== end teacher edit =====================
+// ===================== INPUT SAFETY: hostile characters are removed from loaded data =====================
+// Names, notes etc. are shown inside web pages. Characters that can start a tag or break out of an attribute are removed
+// when data is loaded, so a crafted spreadsheet or a direct database write cannot run script in an admin's browser.
+function _cleanStr(v) { return String(v).replace(/[<>\\]/g, '').replace(/"/g, "'"); }
+function _deepClean(o, depth) {
+  depth = depth || 0; if (depth > 8 || o == null) return o;
+  if (Array.isArray(o)) { for (var i = 0; i < o.length; i++) { var v = o[i]; if (typeof v === 'string') { if (/[<>\\"]/.test(v)) o[i] = _cleanStr(v); } else if (v && typeof v === 'object') _deepClean(v, depth + 1); } return o; }
+  if (typeof o === 'object') { Object.keys(o).forEach(function(k) { var v = o[k]; if (typeof v === 'string') { if (/[<>\\"]/.test(v)) o[k] = _cleanStr(v); } else if (v && typeof v === 'object') _deepClean(v, depth + 1); }); }
+  return o;
+}
+var _cleanedTT = (typeof WeakSet !== 'undefined') ? new WeakSet() : null;
+function _cleanAll() {
+  ['students', 'payments', 'allocations', 'installments', 'attendance', 'allowances', 'charges', 'ptaMeetings', 'ptaAttendance', 'scores', 'behaviourRecords', 'prefectReports', 'users', 'teachers', 'classes', 'subjects', 'periods', 'purposes', 'years'].forEach(function(k) { if (DB[k]) _deepClean(DB[k]); });
+}
+(function() {
+  var os = syncFromSupabase;
+  syncFromSupabase = async function() { var r = await os.apply(this, arguments); try { _cleanAll(); } catch (e) {} return r; };
+  var ol = loadTimetable;
+  loadTimetable = async function() { var r = await ol.apply(this, arguments); try { if (TT && _cleanedTT && !_cleanedTT.has(TT)) { _deepClean(TT); _cleanedTT.add(TT); } } catch (e) {} return r; };
+})();
+// ===================== end input safety =====================
 
 function downloadScoresTemplate() {
   var rows = [
