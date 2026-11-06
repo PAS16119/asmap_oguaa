@@ -320,7 +320,7 @@ tr:hover td{background:#f9fafb;}
       <input type="password" id="lp" placeholder="Enter password" autocomplete="current-password">
     </div>
     <button class="btn btn-primary" onclick="doLogin()">Sign In →</button>
-    <p style="text-align:center;font-size:11px;color:var(--textm);margin-top:14px;">Adombra School Management &amp; Analytics Platform · v1.0 · build 31Oct-c</p>
+    <p style="text-align:center;font-size:11px;color:var(--textm);margin-top:14px;">Adombra School Management &amp; Analytics Platform · v1.0 · build 31Oct-d</p>
     <div id="conn-result" style="margin-top:8px;font-size:12px;text-align:center;display:none"></div>
   </div>
 </div>
@@ -2075,12 +2075,14 @@ function renderManage() {
       </div>
       <div class="sbox"><input type="text" placeholder="Search teachers..." oninput="filterTable(this.value,'teacher-tbl')"></div>
       <div class="twrap"><table id="teacher-tbl">
-        <tr><th>#</th><th>Name</th><th>Sessions</th><th>Allowances</th><th></th></tr>
+        <tr><th>#</th><th>Name</th><th>Phone</th><th>Dept</th><th>Sessions</th><th>Allowances</th><th></th></tr>
         ${DB.teachers.map((t,i)=>{
           const s=DB.attendance.filter(a=>a.teacher===t).length;
           const al=DB.allowances.filter(a=>a.teacher===t).reduce((sum,a)=>sum+a.amount,0);
-          return `<tr><td>${i+1}</td><td style="font-size:12px">${t}</td><td>${s}</td><td>GHS ${al}</td>
-            <td><button class="btn btn-xs btn-outline" onclick="openAddAllowance('${t.replace(/'/g,"\\'")}')">+Allow</button>
+          const inf=_tInfo(t);
+          return `<tr><td>${i+1}</td><td style="font-size:12px">${_x(t)}</td><td style="font-size:11px">${_x(inf.phone||'')}</td><td style="font-size:11px">${_x(inf.dept||'')}</td><td>${s}</td><td>GHS ${al}</td>
+            <td style="white-space:nowrap"><button class="btn btn-xs btn-outline" onclick="openEditTeacher('${encodeURIComponent(t)}')">✏️ Edit</button>
+            <button class="btn btn-xs btn-outline" onclick="openAddAllowance('${t.replace(/'/g,"\\'")}')">+Allow</button>
             <button class="btn btn-xs btn-outline" onclick="removeItem('teacher','${t.replace(/'/g,"\\'")}')">🗑</button></td></tr>`;
         }).join('')}
       </table></div>
@@ -5381,7 +5383,7 @@ function renderSettings() {
 
   // App info
   html += '<div style="text-align:center;padding:16px;color:var(--textm);font-size:11px">'
-    + 'ASMaP \u00b7 Adombra School Management &amp; Analytics Platform \u00b7 v1.0 · build 31Oct-c<br>'
+    + 'ASMaP \u00b7 Adombra School Management &amp; Analytics Platform \u00b7 v1.0 · build 31Oct-d<br>'
     + s.schoolName + ' \u00b7 ' + s.schoolLocation + '</div>';
 
   el.innerHTML = html;
@@ -5727,6 +5729,7 @@ async function importTimetable(inp) {
     var d = JSON.parse(await f.text());
     if (!d.slots || !d.teachers || !d.classes) throw new Error('this is not a timetable file');
     if (TT) { if (TT.classMap) d.classMap = TT.classMap; if (TT.classJoin) d.classJoin = TT.classJoin; }
+    var _al = (DB.settings && DB.settings.teacherAlias) || {}; d.teachers.forEach(function(t) { var k = String(t.n).trim().toUpperCase(); if (_al[k]) t.n = _al[k]; });
     await _saveTimetable(d);
     audit('IMPORT_TIMETABLE', d.slots.length + ' lessons', 'timetable');
     showToast('Timetable imported', 'success');
@@ -7335,10 +7338,9 @@ function getSmsRecipients() {
   if (g === 'all-parents') {
     phones = DB.students.filter(function(s){ return s.status==='active' && s.parentPhone; }).map(function(s){ return s.parentPhone; });
   } else if (g === 'all-teachers') {
-    // Teachers store phone in their profile — for now use DB.teachers array (names only in v4)
-    // Will be enriched when teacher profiles are built
-    phones = [];
-    showToast('Teacher phones not yet in profiles — build teacher profiles to enable','warning');
+    var _ti = (DB.settings && DB.settings.teacherInfo) || {};
+    phones = DB.teachers.map(function(t) { return (_ti[t] || {}).phone; }).filter(function(p, i, a) { return p && a.indexOf(p) === i; });
+    if (!phones.length) showToast('No teacher phone numbers yet. Add them with Edit in Manage → Teachers.', 'warning');
   } else if (g === 'by-class') {
     var cls = (document.getElementById('sms-cls')||{}).value;
     phones = DB.students.filter(function(s){ return s.status==='active' && s.parentPhone && s.class===cls; }).map(function(s){ return s.parentPhone; });
@@ -9540,6 +9542,75 @@ function downloadStudentTemplate() {
   XLSX.writeFile(wb, 'ASMaP_Student_Import_Template.xlsx');
 }
 // ===================== end student import =====================
+// ===================== TEACHER EDIT: correct names after the timetable import, and keep contact details =====================
+// Details live in DB.settings.teacherInfo[NAME] = {phone, email, dept, staffId, notes}.
+// Corrections made to a timetable name are remembered in DB.settings.teacherAlias, so a new timetable import keeps them.
+function _tInfo(name) { var ti = (DB.settings && DB.settings.teacherInfo) || {}; return ti[name] || {}; }
+function openEditTeacher(enc) {
+  var name = decodeURIComponent(enc), inf = _tInfo(name), depts = {};
+  (DB.users || []).forEach(function(u) { if (u.dept) depts[u.dept] = 1; });
+  var ti = (DB.settings && DB.settings.teacherInfo) || {}; Object.keys(ti).forEach(function(k) { if (ti[k].dept) depts[ti[k].dept] = 1; });
+  var nAtt = DB.attendance.filter(function(a) { return a.teacher === name; }).length, nAl = DB.allowances.filter(function(a) { return a.teacher === name; }).length;
+  openModal('Edit teacher',
+    '<div class="fgrp"><label>NAME</label><input type="text" id="et-name" value="' + _x(name) + '" style="text-transform:uppercase"></div>'
+    + '<div style="font-size:11px;color:var(--textm);margin:-6px 0 10px">Changing the name updates ' + nAtt + ' attendance record(s), ' + nAl + ' allowance(s), the timetable and any login linked to this teacher. If the new name already exists, the two are merged.</div>'
+    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div class="fgrp"><label>PHONE</label><input type="tel" id="et-phone" value="' + _x(inf.phone || '') + '" placeholder="0241234567"></div>'
+    + '<div class="fgrp"><label>EMAIL</label><input type="email" id="et-email" value="' + _x(inf.email || '') + '"></div>'
+    + '<div class="fgrp"><label>DEPARTMENT</label><input type="text" id="et-dept" list="et-depts" value="' + _x(inf.dept || '') + '"><datalist id="et-depts">' + Object.keys(depts).map(function(d) { return '<option value="' + _x(d) + '">'; }).join('') + '</datalist></div>'
+    + '<div class="fgrp"><label>STAFF ID</label><input type="text" id="et-sid" value="' + _x(inf.staffId || '') + '"></div></div>'
+    + '<div class="fgrp"><label>NOTES</label><input type="text" id="et-notes" value="' + _x(inf.notes || '') + '" placeholder="e.g. head of department, part-time"></div>'
+    + '<button class="btn btn-primary" style="width:100%" onclick="saveTeacherEdit(\'' + encodeURIComponent(name) + '\')">Save</button>');
+}
+function saveTeacherEdit(enc) {
+  var old = decodeURIComponent(enc), g = function(id) { var e = document.getElementById(id); return e ? e.value.trim() : ''; };
+  var nu = g('et-name').replace(/\s+/g, ' ').toUpperCase();
+  if (!nu) { showToast('The name cannot be empty', 'error'); return; }
+  var ph = _normPhone(g('et-phone')), info = { phone: ph.v, email: g('et-email'), dept: g('et-dept'), staffId: g('et-sid'), notes: g('et-notes') };
+  if (ph.bad) showToast('That phone number does not look right, but it was saved', 'warning');
+  if (nu === old) {
+    DB.settings.teacherInfo = DB.settings.teacherInfo || {}; DB.settings.teacherInfo[old] = info;
+    saveDB(); audit('EDIT_TEACHER', old + ' (details)', 'teachers'); closeModal(); showToast('Saved ✓', 'success'); renderManage(); return;
+  }
+  var merge = DB.teachers.indexOf(nu) >= 0, nA = DB.attendance.filter(function(a) { return a.teacher === old; }).length;
+  showConfirm(merge ? 'Merge teachers' : 'Rename teacher',
+    (merge ? '"' + nu + '" already exists. All of "' + old + '" will be merged into it' : 'Rename "' + old + '" to "' + nu + '"') + ' (' + nA + ' attendance records and their allowances move too). Old archives keep the old name.',
+    function() { _doTeacherRename(old, nu, info, merge); }, merge ? 'Merge' : 'Rename', 'btn-primary');
+}
+async function _doTeacherRename(old, nu, info, merge) {
+  closeModal(); showToast('Updating…', 'warning');
+  if (autoRefreshTimer) { clearInterval(autoRefreshTimer); autoRefreshTimer = null; }
+  var failed = [], hdr = Object.assign({}, HDR, { 'Prefer': 'return=minimal' });
+  var idx = DB.teachers.indexOf(old);
+  if (idx >= 0) { if (merge) DB.teachers.splice(idx, 1); else DB.teachers[idx] = nu; }
+  DB.attendance.forEach(function(a) { if (a.teacher === old) a.teacher = nu; });
+  DB.allowances.forEach(function(a) { if (a.teacher === old) a.teacher = nu; });
+  (DB.users || []).forEach(function(u) { if (u.teacherLink === old) u.teacherLink = nu; });
+  DB.settings.teacherInfo = DB.settings.teacherInfo || {};
+  var oi = DB.settings.teacherInfo[old] || {}, cur = DB.settings.teacherInfo[nu] || {}, given = {};
+  Object.keys(info).forEach(function(k) { if (info[k]) given[k] = info[k]; });
+  delete DB.settings.teacherInfo[old];
+  DB.settings.teacherInfo[nu] = merge ? Object.assign({}, oi, cur, given) : info;
+  // the timetable: rename there too, and remember the correction for next year's import
+  try { if (typeof loadTimetable === 'function') await loadTimetable(); } catch (e) {}
+  if (typeof TT !== 'undefined' && TT && TT.teachers) {
+    var changed = false; DB.settings.teacherAlias = DB.settings.teacherAlias || {};
+    Object.keys(DB.settings.teacherAlias).forEach(function(k) { if (DB.settings.teacherAlias[k] === old) DB.settings.teacherAlias[k] = nu; });
+    TT.teachers.forEach(function(t) { var k = String(t.n).trim().toUpperCase(); if (k === old) { DB.settings.teacherAlias[k] = nu; t.n = nu; changed = true; } });
+    if (changed) { try { await _saveTimetable(TT); } catch (e) { failed.push('timetable'); } }
+  }
+  var enc = encodeURIComponent(old), q = function(table, col, bodyKey) {
+    return fetch(SUPA_URL + '/rest/v1/' + table + '?' + col + '=eq.' + enc, { method: 'PATCH', headers: hdr, body: JSON.stringify((function() { var o = {}; o[bodyKey] = nu; return o; })()) }).then(function(r) { return r.ok; }).catch(function() { return false; });
+  };
+  if (!(await q('attendance', 'teacher_name', 'teacher_name'))) failed.push('attendance');
+  if (!(await q('allowances', 'teacher_name', 'teacher_name'))) failed.push('allowances');
+  await q('profiles', 'teacher_link', 'teacher_link');   // best effort
+  await saveDB();
+  audit('EDIT_TEACHER', old + ' → ' + nu + (merge ? ' (merged)' : ''), 'teachers');
+  if (!autoRefreshTimer) autoRefreshTimer = setInterval(silentRefresh, 30000);
+  showToast(failed.length ? 'Renamed here, but these could not be updated in the database: ' + failed.join(', ') : (merge ? 'Teachers merged ✓' : 'Teacher renamed ✓'), failed.length ? 'warning' : 'success');
+  renderManage();
+}
+// ===================== end teacher edit =====================
 
 function downloadScoresTemplate() {
   var rows = [
