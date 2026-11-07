@@ -22,6 +22,11 @@ body{font-family:'Outfit',sans-serif;background:#eef4ee;color:var(--text);min-he
 .card-t{font-size:18px;font-weight:800;color:var(--g1);margin-bottom:6px;}
 .card-s{font-size:13px;color:var(--textm);margin-bottom:20px;line-height:1.5;}
 .fgrp{margin-bottom:14px;}
+.cand{border:1.5px solid var(--grayb);border-radius:12px;padding:10px 12px;margin-bottom:8px;cursor:pointer;background:#fff;}
+.cand:hover{border-color:var(--g3);}
+.cand.sel{border-color:var(--g2);background:var(--g5);}
+.cn{font-weight:700;font-size:14px;color:var(--g1);}
+.cm{font-size:12px;color:var(--textm);margin-top:2px;}
 .fgrp label{display:block;font-size:11px;font-weight:700;color:var(--textm);margin-bottom:5px;letter-spacing:.3px;}
 .fgrp input,.fgrp select{width:100%;padding:12px 14px;border:1.5px solid var(--grayb);border-radius:var(--rs);font-family:'Outfit',sans-serif;font-size:14px;color:var(--text);}
 .fgrp input:focus,.fgrp select:focus{outline:none;border-color:var(--g2);}
@@ -90,16 +95,24 @@ tr:last-child td{border-bottom:none;}
   <div class="cw">
     <div class="card">
       <div class="card-t">🔍 Find Your Ward</div>
-      <div class="card-s">Enter your ward's BECE Index Number from their placement letter.</div>
+      <div class="card-s">Type your ward's name (first name and surname). Pick your ward from the list, then enter his or her date of birth.</div>
       <div class="alert a-red" id="e-lookup"></div>
       <div class="fgrp">
-        <label>BECE INDEX NUMBER</label>
-        <input type="text" id="bece-inp" placeholder="e.g. 3012345678"
-          style="letter-spacing:2px;font-size:16px;text-align:center;text-transform:uppercase"
-          onkeydown="if(event.key==='Enter')lookupStudent()"
+        <label>WARD'S NAME</label>
+        <input type="text" id="name-inp" placeholder="e.g. KWAME ASANTE" autocomplete="off"
+          style="font-size:16px;text-align:center;text-transform:uppercase"
+          onkeydown="if(event.key==='Enter')searchName()"
           oninput="this.value=this.value.toUpperCase()">
       </div>
-      <button class="btn btn-g" onclick="lookupStudent()" id="btn-lookup">Find Student →</button>
+      <button class="btn btn-g" onclick="searchName()" id="btn-lookup">Search →</button>
+      <div id="cand-box" style="margin-top:14px"></div>
+      <div id="dob-box" style="display:none;margin-top:6px">
+        <div class="fgrp">
+          <label>DATE OF BIRTH OF <span id="dob-who"></span></label>
+          <input type="date" id="dob-inp" max="" style="text-align:center;font-size:16px" onkeydown="if(event.key==='Enter')verifyDob()">
+        </div>
+        <button class="btn btn-g" onclick="verifyDob()" id="btn-dob">Continue →</button>
+      </div>
       <div style="margin-top:16px;border-top:1px solid var(--grayb);padding-top:14px;">
         <div style="font-size:12px;color:var(--textm);margin-bottom:8px;font-weight:600">ALREADY HAVE A PIN?</div>
         <button class="btn btn-out" onclick="goScreen('s-pin')" style="padding:10px">Enter PIN directly →</button>
@@ -198,7 +211,7 @@ function sem(){var n=new Date(),y=n.getFullYear(),m=n.getMonth()+1,ay=m>=9?(y+'_
 function goScreen(id){document.querySelectorAll('.screen').forEach(function(s){s.classList.remove('active');});document.getElementById(id).classList.add('active');window.scrollTo(0,0);}
 function showErr(id,msg){var e=document.getElementById(id);if(e){e.textContent=msg;e.style.display='block';}}
 function hideErr(id){var e=document.getElementById(id);if(e)e.style.display='none';}
-function logout(){STUDENT=null;document.getElementById('bece-inp').value='';document.getElementById('pin-inp').value='';goScreen('s-lookup');}
+function logout(){STUDENT=null;document.getElementById('name-inp').value='';document.getElementById('cand-box').innerHTML='';document.getElementById('dob-box').style.display='none';document.getElementById('dob-inp').value='';PICK=null;CANDS=[];document.getElementById('pin-inp').value='';goScreen('s-lookup');}
 
 async function loadCfg(){
   try{
@@ -207,29 +220,56 @@ async function loadCfg(){
   }catch(e){}
 }
 
-// SCREEN 1
-async function lookupStudent(){
-  var bece=(document.getElementById('bece-inp').value||'').trim().toUpperCase();
-  hideErr('e-lookup');
-  if(!bece){showErr('e-lookup','Please enter your BECE Index Number');return;}
-  var btn=document.getElementById('btn-lookup');
-  btn.textContent='Searching…';btn.disabled=true;
+// SCREEN 1: name -> choose your ward (class and last digits of the BECE number help tell similar names apart) -> date of birth
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+var CANDS=[], PICK=null;
+async function searchName(){
+  var name=(document.getElementById('name-inp').value||'').trim().toUpperCase();
+  hideErr('e-lookup');PICK=null;document.getElementById('dob-box').style.display='none';document.getElementById('cand-box').innerHTML='';
+  if(name.split(/\s+/).filter(function(t){return t.length>=2;}).length<2){showErr('e-lookup','Please type at least two names, for example the first name and the surname.');return;}
+  var btn=document.getElementById('btn-lookup');btn.textContent='Searching…';btn.disabled=true;
   try{
-    var d=await pcall({action:'lookup',bece:bece});
+    var d=await pcall({action:'search',name:name});
     if(d.error==='rate'){showErr('e-lookup','Too many attempts. Please wait a few minutes and try again.');return;}
-    d=d.student?[d.student]:[];
-    if(!d||!d.length){showErr('e-lookup','No student found with that BECE Index Number.\nCheck the number or contact the school office: 0247595408');return;}
-    STUDENT=d[0];buildPayScreen(STUDENT);goScreen('s-pay');
+    if(d.tooMany){showErr('e-lookup','Too many students match. Please type the full name.');return;}
+    CANDS=d.results||[];
+    if(!CANDS.length){showErr('e-lookup','No student found with that name.\nCheck the spelling or contact the school office: 0247595408');return;}
+    document.getElementById('cand-box').innerHTML='<div style="font-size:12px;font-weight:700;color:var(--textm);margin-bottom:6px">'+(CANDS.length>1?'SEVERAL MATCHES. CHOOSE YOUR WARD:':'IS THIS YOUR WARD?')+'</div>'
+      +CANDS.map(function(c,i){return '<div class="cand" id="cand-'+i+'" onclick="pickCand('+i+')"><div class="cn">'+esc(c.name)+'</div><div class="cm">Class: '+esc(c.class||'—')+' &nbsp;|&nbsp; BECE No.: '+esc(c.bece||'—')+'</div></div>';}).join('');
+    if(CANDS.length===1)pickCand(0);
   }catch(e){showErr('e-lookup','Connection error. Check your internet and try again.');}
-  finally{btn.textContent='Find Student →';btn.disabled=false;}
+  finally{btn.textContent='Search →';btn.disabled=false;}
+}
+function pickCand(i){
+  PICK=CANDS[i];hideErr('e-lookup');
+  CANDS.forEach(function(c,k){var el=document.getElementById('cand-'+k);if(el)el.className='cand'+(k===i?' sel':'');});
+  document.getElementById('dob-who').textContent=PICK.name;
+  var di=document.getElementById('dob-inp');di.value='';di.max=new Date().toISOString().split('T')[0];
+  document.getElementById('dob-box').style.display='block';
+}
+async function verifyDob(){
+  hideErr('e-lookup');
+  var dob=document.getElementById('dob-inp').value;
+  if(!PICK){showErr('e-lookup','Please choose your ward from the list.');return;}
+  if(!dob){showErr('e-lookup','Please enter the date of birth.');return;}
+  var btn=document.getElementById('btn-dob');btn.textContent='Checking…';btn.disabled=true;
+  try{
+    var d=await pcall({action:'verify',h:PICK.h,dob:dob});
+    if(d.error==='rate'||d.error==='locked'){showErr('e-lookup','Too many wrong attempts for this student. Please wait an hour or contact the school office: 0247595408');return;}
+    if(d.error==='expired'){showErr('e-lookup','This search has expired. Please search again.');PICK=null;document.getElementById('dob-box').style.display='none';return;}
+    if(d.error==='nodob'){showErr('e-lookup','Your ward\'s date of birth is not yet recorded. Please contact the school office: 0247595408');return;}
+    if(d.error==='mismatch'||!d.student){showErr('e-lookup','That date of birth does not match our records. Please check it and try again.');return;}
+    STUDENT=d.student;document.getElementById('dob-inp').value='';buildPayScreen(STUDENT);goScreen('s-pay');
+  }catch(e){showErr('e-lookup','Connection error. Check your internet and try again.');}
+  finally{btn.textContent='Continue →';btn.disabled=false;}
 }
 
 // SCREEN 2
 function buildPayScreen(s){
   document.getElementById('sc-box').innerHTML=
-    '<div class="sc"><div class="sc-n">'+s.full_name+'</div>'
-    +'<div class="sc-m">Class: '+s.class_name+' &nbsp;|&nbsp; Form: '+(s.form||'—')+'<br>Programme: '+(s.programme||'—')+' &nbsp;|&nbsp; House: '+(s.house||'—')+'</div>'
-    +'<div class="sc-bd">'+(s.residential_status?'<span class="sc-b">'+s.residential_status+'</span>':'')+(s.admission_year?'<span class="sc-b">'+s.admission_year+'</span>':'')+'</div></div>';
+    '<div class="sc"><div class="sc-n">'+esc(s.full_name)+'</div>'
+    +'<div class="sc-m">Class: '+esc(s.class_name)+' &nbsp;|&nbsp; Form: '+esc(s.form||'—')+'<br>Programme: '+esc(s.programme||'—')+' &nbsp;|&nbsp; House: '+esc(s.house||'—')+'</div>'
+    +'<div class="sc-bd">'+(s.residential_status?'<span class="sc-b">'+esc(s.residential_status)+'</span>':'')+(s.admission_year?'<span class="sc-b">'+esc(s.admission_year)+'</span>':'')+'</div></div>';
   var s2=sem();
   document.getElementById('pay-sum').innerHTML=
     '<div class="pr"><span>Portal Access Fee</span><span>GHS '+FEE.toFixed(2)+'</span></div>'
@@ -338,7 +378,7 @@ async function showReport(s,viewNum,extra){
 
   h+='<div class="pcard"><div class="pct">💰 Payment History</div>';
   if(!pays.length){h+='<div style="text-align:center;padding:16px;color:var(--textm);font-size:13px">No confirmed payments yet.</div>';}
-  else{h+='<div class="twrap"><table><tr><th>Date</th><th>GHS</th><th>Purpose</th></tr>'+pays.map(function(p){return'<tr><td>'+(p.date||'')+'</td><td><strong>'+parseFloat(p.raw_amount||p.amount||0).toLocaleString()+'</strong></td><td>'+((p.allocations&&p.allocations.length)?p.allocations.map(function(a){return'<span class="badge bg" style="margin:1px">'+a.purpose+' · GHS '+parseFloat(a.amount||0).toLocaleString()+'</span>';}).join(' '):'<span class="badge" style="background:#fff3cd;color:#856404">'+(p.purpose||'Awaiting allocation by the school')+'</span>')+'</td></tr>';}).join('')+'</table></div>';}
+  else{h+='<div class="twrap"><table><tr><th>Date</th><th>GHS</th><th>Purpose</th></tr>'+pays.map(function(p){return'<tr><td>'+(p.date||'')+'</td><td><strong>'+parseFloat(p.raw_amount||p.amount||0).toLocaleString()+'</strong></td><td>'+((p.allocations&&p.allocations.length)?p.allocations.map(function(a){return'<span class="badge bg" style="margin:1px">'+esc(a.purpose)+' · GHS '+parseFloat(a.amount||0).toLocaleString()+'</span>';}).join(' '):'<span class="badge" style="background:#fff3cd;color:#856404">'+(p.purpose||'Awaiting allocation by the school')+'</span>')+'</td></tr>';}).join('')+'</table></div>';}
   h+='</div>';
 
   var fines=(extra&&extra.fines)||[],arrears=(extra&&extra.arrears)||0;
@@ -346,7 +386,7 @@ async function showReport(s,viewNum,extra){
     var ftot=fines.reduce(function(a,f){return a+parseFloat(f.amount||0);},0);
     h+='<div class="pcard"><div class="pct">⚠️ Other amounts owing</div>'
       +(arrears>0?'<div style="font-size:13px;padding:6px 0;border-bottom:1px solid var(--grayb)">Balance brought forward from last year: <strong>GHS '+parseFloat(arrears).toLocaleString()+'</strong></div>':'')
-      +fines.map(function(f){return'<div style="font-size:13px;padding:6px 0;border-bottom:1px solid var(--grayb)">'+(f.note||'Fine')+': <strong>GHS '+parseFloat(f.amount||0).toLocaleString()+'</strong></div>';}).join('')
+      +fines.map(function(f){return'<div style="font-size:13px;padding:6px 0;border-bottom:1px solid var(--grayb)">'+esc(f.note||'Fine')+': <strong>GHS '+parseFloat(f.amount||0).toLocaleString()+'</strong></div>';}).join('')
       +'<div style="font-size:11px;color:var(--textm);margin-top:8px">Please pay at the school office. Amounts may be reduced if the school waives a fine.</div></div>';
   }
 
@@ -376,7 +416,7 @@ async function showReport(s,viewNum,extra){
   document.getElementById('rpt-content').innerHTML=h;
 }
 
-function pr2(l,v){return'<tr><td style="color:var(--textm);font-size:12px;padding:6px 0;width:40%;vertical-align:top">'+l+'</td><td style="font-weight:600;font-size:13px;padding:6px 0">'+(v||'—')+'</td></tr>';}
+function pr2(l,v){return'<tr><td style="color:var(--textm);font-size:12px;padding:6px 0;width:40%;vertical-align:top">'+l+'</td><td style="font-weight:600;font-size:13px;padding:6px 0">'+esc(v||'—')+'</td></tr>';}
 
 window.addEventListener('load',async function(){
   await loadCfg();

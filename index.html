@@ -320,7 +320,7 @@ tr:hover td{background:#f9fafb;}
       <input type="password" id="lp" placeholder="Enter password" autocomplete="current-password">
     </div>
     <button class="btn btn-primary" onclick="doLogin()">Sign In →</button>
-    <p style="text-align:center;font-size:11px;color:var(--textm);margin-top:14px;">Adombra School Management &amp; Analytics Platform · v1.0 · build 31Oct-f</p>
+    <p style="text-align:center;font-size:11px;color:var(--textm);margin-top:14px;">Adombra School Management &amp; Analytics Platform · v1.0 · build 31Oct-g</p>
     <div id="conn-result" style="margin-top:8px;font-size:12px;text-align:center;display:none"></div>
   </div>
 </div>
@@ -5406,7 +5406,7 @@ function renderSettings() {
 
   // App info
   html += '<div style="text-align:center;padding:16px;color:var(--textm);font-size:11px">'
-    + 'ASMaP \u00b7 Adombra School Management &amp; Analytics Platform \u00b7 v1.0 · build 31Oct-f<br>'
+    + 'ASMaP \u00b7 Adombra School Management &amp; Analytics Platform \u00b7 v1.0 · build 31Oct-g<br>'
     + s.schoolName + ' \u00b7 ' + s.schoolLocation + '</div>';
 
   el.innerHTML = html;
@@ -5712,12 +5712,42 @@ async function deleteArchive(id) {
   showToast('Archive deleted', 'success');
   openArchives();
 }
+function _ptaaNorm(v) { return String(v == null ? '' : v).toUpperCase().replace(/\s+/g, ' ').trim(); }
 function filterPTAList() {
   var c = (document.getElementById('ptaa-cls') || {}).value || '';
-  document.querySelectorAll('.ptaa-chk').forEach(function(cb) {
-    var row = cb.closest('label') || cb.parentElement;
-    if (row) row.style.display = (!c || cb.getAttribute('data-class') === c) ? '' : 'none';
+  var q = _ptaaNorm((document.getElementById('ptaa-search') || {}).value), toks = q ? q.split(' ') : [];
+  var shown = 0, total = 0, listed = {};
+  document.querySelectorAll('#ptaa-list .ptaa-chk').forEach(function(cb) {
+    var row = cb.closest('label') || cb.parentElement, nm = _ptaaNorm(cb.getAttribute('data-name'));
+    var show = (!c || cb.getAttribute('data-class') === c) && toks.every(function(t) { return nm.indexOf(t) >= 0; });
+    total++; listed[cb.value] = 1; if (row) row.style.display = show ? '' : 'none'; if (show) shown++;
   });
+  document.querySelectorAll('#ptaa-extra .ptaa-chk').forEach(function(cb) { listed[cb.value] = 1; });
+  var info = document.getElementById('ptaa-info');
+  if (info) info.textContent = (toks.length || c) ? 'Showing ' + shown + ' of ' + total + ' students in this list' : total + ' students in this list';
+  var more = document.getElementById('ptaa-more'); if (!more) return;
+  if (q.length < 2) { more.innerHTML = ''; return; }
+  var found = DB.students.filter(function(x) { return (x.status || 'active') === 'active' && !listed[x.id] && toks.every(function(t) { return _ptaaNorm(x.name).indexOf(t) >= 0; }); }).slice(0, 15);
+  more.innerHTML = found.length
+    ? '<div style="background:var(--goldp);border-radius:8px;padding:8px 10px;margin-bottom:8px"><div style="font-size:12px;font-weight:700;margin-bottom:4px">Not in this meeting\'s list. Tap to add:</div>'
+      + found.map(function(x) { return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:4px 0;font-size:13px"><span>' + _x(x.name) + ' <span class="badge bgray" style="font-size:10px">' + _x(x.class) + '</span></span><button class="btn btn-xs btn-primary" type="button" onclick="ptaaAdd(\'' + _x(x.id) + '\')">＋ Add</button></div>'; }).join('') + '</div>'
+    : (shown === 0 ? '<div style="font-size:12px;color:var(--red);margin-bottom:8px">No student found with that name' + (c ? ' (the class filter is set to ' + _x(c) + ')' : '') + '.</div>' : '');
+}
+function ptaaAdd(id) {
+  var x = DB.students.find(function(z) { return z.id === id; }), ex = document.getElementById('ptaa-extra'); if (!x || !ex) return;
+  if (!ex.querySelector('input[value="' + id + '"]')) {
+    var lab = document.createElement('label');
+    lab.style.cssText = 'display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--grayb);font-size:13px;cursor:pointer;background:var(--goldp)';
+    lab.innerHTML = '<input type="checkbox" value="' + _x(x.id) + '" data-name="' + _x(x.name) + '" data-class="' + _x(x.class) + '" class="ptaa-chk" checked style="width:16px;height:16px" onchange="if(!this.checked){this.closest(\'label\').remove();filterPTAList();}ptaaCount()">'
+      + '<span>' + _x(x.name) + '</span><span class="badge bgray" style="font-size:10px">' + _x(x.class) + '</span><span class="badge bgold" style="font-size:10px">added</span>';
+    ex.appendChild(lab);
+  }
+  var si = document.getElementById('ptaa-search'); if (si) si.value = '';
+  filterPTAList(); ptaaCount();
+}
+function ptaaCount() {
+  var n = document.querySelectorAll('.ptaa-chk:checked').length, b = document.getElementById('ptaa-save');
+  if (b) b.textContent = 'Save Attendance (' + n + ' present)';
 }
 
 
@@ -8146,27 +8176,30 @@ function openMarkAttendance(meetingId, meetingTitle) {
   var r = currentUser.role;
   var classStudents = DB.students.filter(function(s){
     var mt = (DB.ptaMeetings||[]).find(function(x){ return x.id===meetingId; });
-    return s.status==='active' && (!mt || !(mt.targetClasses||[]).length || mt.targetClasses.indexOf(s.class)>=0);
+    return s.status==='active' && (!mt || !(mt.targetClasses||[]).length || mt.targetClasses.indexOf(s.class)>=0 || (DB.ptaAttendance||[]).some(function(a){ return a.meetingId===meetingId && a.studentId===s.id; }));
   });
   var existing = (DB.ptaAttendance||[]).filter(function(a){ return a.meetingId===meetingId; });
 
   var body = '<p style="font-size:13px;color:var(--textm);margin-bottom:10px">Tick each parent who attended. Unticked = absent.</p>'
-    +(r==='admin'?'<div class="fgrp"><label>FILTER BY CLASS</label><select id="ptaa-cls" onchange="filterPTAList(\''+meetingId+'\')">'
+    +'<div class="fgrp" style="margin-bottom:6px"><label>SEARCH BY NAME</label><div style="display:flex;gap:6px"><input type="search" id="ptaa-search" placeholder="Type part of the name…" autocomplete="off" oninput="filterPTAList()" style="flex:1"><button class="btn btn-outline btn-sm" type="button" onclick="document.getElementById(\'ptaa-search\').value=\'\';filterPTAList()">Clear</button></div></div>'
+    +'<div id="ptaa-info" style="font-size:11px;color:var(--textm);margin-bottom:6px"></div><div id="ptaa-more"></div><div id="ptaa-extra"></div>'
+    +(r==='admin'?'<div class="fgrp"><label>FILTER BY CLASS</label><select id="ptaa-cls" onchange="filterPTAList()">'
     +'<option value="">All Classes</option>'
     +DB.classes.map(function(c){ return '<option>'+c+'</option>'; }).join('')
     +'</select></div>':'')
-    +'<div id="ptaa-list">'
+    +'<div id="ptaa-list" onchange="ptaaCount()">'
     +classStudents.map(function(s){
       var att = existing.find(function(a){ return a.studentId===s.id; });
       return '<label style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--grayb);font-size:13px;cursor:pointer">'
-        +'<input type="checkbox" value="'+s.id+'" data-name="'+s.name+'" data-class="'+s.class+'" class="ptaa-chk" '+(att&&att.parentAttended?'checked':'')+' style="width:16px;height:16px">'
-        +'<span>'+s.name+'</span><span class="badge bgray" style="font-size:10px">'+s.class+'</span>'
+        +'<input type="checkbox" value="'+s.id+'" data-name="'+_x(s.name)+'" data-class="'+_x(s.class)+'" class="ptaa-chk" '+(att&&att.parentAttended?'checked':'')+' style="width:16px;height:16px">'
+        +'<span>'+_x(s.name)+'</span><span class="badge bgray" style="font-size:10px">'+_x(s.class)+'</span>'
         +'</label>';
     }).join('')
     +'</div>'
-    +'<button class="btn btn-primary" style="width:100%;margin-top:12px" onclick="saveAttendance(\''+meetingId+'\')">Save Attendance</button>';
+    +'<button class="btn btn-primary" id="ptaa-save" style="width:100%;margin-top:12px" onclick="saveAttendance(\''+meetingId+'\')">Save Attendance</button>';
 
   openModal('Attendance — '+meetingTitle, body);
+  filterPTAList(); ptaaCount();
 }
 
 async function saveAttendance(meetingId) {
