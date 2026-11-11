@@ -320,7 +320,7 @@ tr:hover td{background:#f9fafb;}
       <input type="password" id="lp" placeholder="Enter password" autocomplete="current-password">
     </div>
     <button class="btn btn-primary" onclick="doLogin()">Sign In →</button>
-    <p style="text-align:center;font-size:11px;color:var(--textm);margin-top:14px;">Adombra School Management &amp; Analytics Platform · v1.0 · build 31Oct-g</p>
+    <p style="text-align:center;font-size:11px;color:var(--textm);margin-top:14px;">Adombra School Management &amp; Analytics Platform · v1.0 · build 11Nov-a</p>
     <div id="conn-result" style="margin-top:8px;font-size:12px;text-align:center;display:none"></div>
   </div>
 </div>
@@ -976,7 +976,7 @@ function buildNav() {
 
   // Ledger
   if (['admin','coordinator'].includes(r)) tabs.push({id:'ledger',icon:'📋',label:'Ledger'});
-  if (r==='viewer' && (hasPerm('ledger')||hasPerm('et'))) tabs.push({id:'ledger',icon:'📋',label:'Ledger'});
+  if (r==='viewer' && (hasPerm('ledger')||hasPerm('et')||hasPerm('tm')||hasPerm('project')||hasPerm('others'))) tabs.push({id:'ledger',icon:'📋',label:'Ledger'});
 
   // Approvals
   if (r==='admin') tabs.push({id:'approvals',icon:'🔔',label:'Approve',badge:true});
@@ -3034,7 +3034,7 @@ function filterLedger() {
 }
 
 function exportLedgerClass(cls) {
-  var purposes = DB.purposes.map(function(p){ return p.name; });
+  var purposes = visiblePurposes();
   var etAmt = DB.paySettings.etAmount || 500;
   var headers = ['Student', 'Class', 'Total Paid (GHS)'].concat(purposes).concat(['Status']);
   var rows = [headers];
@@ -3055,13 +3055,15 @@ function exportLedgerClass(cls) {
     });
     byPur['Extended Teaching'] = getETAmountFromPayments(stuPays);
     var status = total===0 ? 'UNPAID' : stuPays.some(function(p){ return (p.unallocated||0)>0; }) ? 'PARTIAL' : 'PAID';
+    var _cf = clearedFigures(stuPays, purposes);
+    if (_cf.scoped) { total = _cf.total; byPur = _cf.byPur; status = _cf.status === 'unpaid' ? 'UNPAID' : _cf.status === 'full' ? 'PAID' : 'PARTIAL'; }
     rows.push([s.name, cls, total].concat(purposes.map(function(pur){ return byPur[pur]||0; })).concat([status]));
   });
   toExcel(rows, 'Ledger_' + cls.replace(/\s/g,'_'));
 }
 
 function exportLedgerAll() {
-  var purposes = DB.purposes.map(function(p){ return p.name; });
+  var purposes = visiblePurposes();
   var etAmt = DB.paySettings.etAmount || 500;
   var headers = ['Student', 'Class', 'Form', 'Total Paid (GHS)'].concat(purposes).concat(['Status']);
   var rows = [headers];
@@ -3083,6 +3085,8 @@ function exportLedgerAll() {
       });
       byPur['Extended Teaching'] = getETAmountFromPayments(stuPays);
       var status = total===0 ? 'UNPAID' : stuPays.some(function(p){ return (p.unallocated||0)>0; }) ? 'PARTIAL' : 'PAID';
+      var _cf = clearedFigures(stuPays, purposes);
+      if (_cf.scoped) { total = _cf.total; byPur = _cf.byPur; status = _cf.status === 'unpaid' ? 'UNPAID' : _cf.status === 'full' ? 'PAID' : 'PARTIAL'; }
       rows.push([s.name, cls, s.form||'', total].concat(purposes.map(function(pur){ return byPur[pur]||0; })).concat([status]));
     });
   });
@@ -4918,17 +4922,14 @@ function renderViewerPayments() {
 function renderViewerLedger() {
   var el = document.getElementById('page-ledger');
   var perms = currentUser.permissions || [];
-  var permMap = { et:'Extended Teaching', tm:'Teacher Motivation', project:'PTA Project', others:'Others' };
-  var visiblePurposes = Object.keys(permMap).filter(function(k){ return perms.includes(k); }).map(function(k){ return permMap[k]; });
   var etAmt = DB.paySettings.etAmount || 500;
+  var purposes = visiblePurposes();
 
-  if (visiblePurposes.length === 0 && !perms.includes('ledger')) {
+  if (purposes.length === 0) {
     el.innerHTML = '<div class="card"><div class="empty"><div class="eico">&#128274;</div><p>No ledger permissions.</p></div></div>';
     return;
   }
 
-  // Use the full purposes list if they have ledger perm, else only their visible purposes
-  var purposes = perms.includes('ledger') ? DB.purposes.map(function(p){ return p.name; }) : visiblePurposes;
   if (!ledgerSelectedClass || !DB.classes.includes(ledgerSelectedClass)) ledgerSelectedClass = DB.classes.slice().sort()[0] || '';
 
   // Class pills
@@ -4936,7 +4937,7 @@ function renderViewerLedger() {
     var isSelected = cls === ledgerSelectedClass;
     var roster = DB.students.filter(function(s){ return s.class===cls; });
     var unpaid = roster.filter(function(s){
-      return !DB.payments.find(function(p){ return p.student===s.name && p.class===cls && p.approvalStatus==='confirmed'; });
+      return clearedFigures(DB.payments.filter(function(p){ return p.student===s.name && p.class===cls && p.approvalStatus==='confirmed'; }), purposes).total <= 0;
     }).length;
     return '<button onclick="selectLedgerClass(\'' + cls + '\')" style="border:none;border-radius:20px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;'
       + (isSelected?'background:var(--g2);color:#fff;':'background:var(--grayb);color:var(--text);')
@@ -4971,7 +4972,7 @@ function renderViewerLedger() {
   });
 
   var colors = ['#1a6b3c','#c8860a','#1565c0','#c0392b','#6d28d9'];
-  var paidCount = classStudents.filter(function(s){ return DB.payments.find(function(p){ return p.student===s.name && p.class===ledgerSelectedClass && p.approvalStatus==='confirmed'; }); }).length;
+  var paidCount = classStudents.filter(function(s){ return clearedFigures(DB.payments.filter(function(p){ return p.student===s.name && p.class===ledgerSelectedClass && p.approvalStatus==='confirmed'; }), purposes).total > 0; }).length;
   var pct = classStudents.length>0?Math.round(paidCount/classStudents.length*100):0;
 
   var purposeSummaryRows = purposeSummary.map(function(ps, i) {
@@ -4989,15 +4990,9 @@ function renderViewerLedger() {
 
   var tableRows = classStudents.map(function(s) {
     var stuPays = DB.payments.filter(function(p){ return p.student===s.name && p.class===ledgerSelectedClass && p.approvalStatus==='confirmed'; });
-    var totalAmt = stuPays.reduce(function(sum,p){ return sum+(p.rawAmount||p.amount); },0);
-    var payIds = stuPays.map(function(p){ return p.id; });
-    var byPur = {};
-    purposes.forEach(function(p){ byPur[p]=0; });
-    (DB.allocations||[]).forEach(function(al){ if(payIds.includes(al.paymentId)&&byPur.hasOwnProperty(al.purpose)) byPur[al.purpose]+=al.amount; });
-    // Override ET with canonical calculation (handles payments with/without allocation records consistently)
-    byPur['Extended Teaching'] = getETAmountFromPayments(stuPays);
+    var _f = clearedFigures(stuPays, purposes), totalAmt = _f.total, byPur = _f.byPur;
     var isPaid = totalAmt>0;
-    var overallStatus = !isPaid?'unpaid':purposes.every(function(pur){ var exp=purposeExpected[pur]||0; return exp===0||(byPur[pur]||0)>=exp; })?'full':'partial';
+    var overallStatus = _f.status;
     var rowBg = overallStatus==='unpaid'?'background:rgba(192,57,43,0.04)':overallStatus==='partial'?'background:rgba(200,134,10,0.04)':'';
     return '<tr style="'+rowBg+'">'
       + '<td style="font-size:12px;color:'+(isPaid?'var(--text)':'var(--textm)')+'">'+s.name+'</td>'
@@ -5406,7 +5401,7 @@ function renderSettings() {
 
   // App info
   html += '<div style="text-align:center;padding:16px;color:var(--textm);font-size:11px">'
-    + 'ASMaP \u00b7 Adombra School Management &amp; Analytics Platform \u00b7 v1.0 · build 31Oct-g<br>'
+    + 'ASMaP \u00b7 Adombra School Management &amp; Analytics Platform \u00b7 v1.0 · build 11Nov-a<br>'
     + s.schoolName + ' \u00b7 ' + s.schoolLocation + '</div>';
 
   el.innerHTML = html;
@@ -6556,7 +6551,28 @@ function _payCoordPurposes() { var c = DB.paySettings && DB.paySettings.coordPur
 function visiblePurposes() {
   var all = DB.purposes.map(function(p) { return p.name; });
   if (currentUser && currentUser.role === 'coordinator') { var cp = _payCoordPurposes(); return all.filter(function(n) { return cp.indexOf(n) >= 0; }); }
+  if (currentUser && currentUser.role === 'viewer') {
+    // Superintendents see only the fee purposes the admin ticked for them. Only the 'ledger' permission opens every purpose.
+    var vp = currentUser.permissions || [];
+    if (vp.indexOf('ledger') >= 0) return all;
+    var vmap = { et: 'Extended Teaching', tm: 'Teacher Motivation', project: 'PTA Project', others: 'Others' };
+    return all.filter(function(n) { return Object.keys(vmap).some(function(k) { return vp.indexOf(k) >= 0 && vmap[k] === n; }); });
+  }
   return all;
+}
+// One student's money figures limited to the purposes this user is cleared to see.
+// Total, status and paid/unpaid all come from these purposes only, never from the student's whole payment.
+function clearedFigures(stuPays, purposes) {
+  var scoped = purposes.length < DB.purposes.length;
+  var payIds = stuPays.map(function(p) { return p.id; }), byPur = {}, exp = {};
+  purposes.forEach(function(n) { byPur[n] = 0; });
+  DB.purposes.forEach(function(p) { exp[p.name] = p.expected || 0; });
+  (DB.allocations || []).forEach(function(al) { if (payIds.indexOf(al.paymentId) >= 0 && byPur.hasOwnProperty(al.purpose)) byPur[al.purpose] += al.amount; });
+  if (byPur.hasOwnProperty('Extended Teaching')) byPur['Extended Teaching'] = getETAmountFromPayments(stuPays);
+  var total = scoped ? purposes.reduce(function(t, n) { return t + (byPur[n] || 0); }, 0)
+                     : stuPays.reduce(function(t, p) { return t + (p.rawAmount || p.amount); }, 0);
+  var status = total <= 0 ? 'unpaid' : purposes.every(function(n) { return !(exp[n] > 0) || (byPur[n] || 0) >= exp[n]; }) ? 'full' : 'partial';
+  return { total: total, byPur: byPur, status: status, scoped: scoped };
 }
 function _studentPays(name, cls) {
   return DB.payments.filter(function(p) { return p.student === name && p.class === cls && p.approvalStatus !== 'rejected'; })
