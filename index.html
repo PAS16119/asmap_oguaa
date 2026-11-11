@@ -320,7 +320,7 @@ tr:hover td{background:#f9fafb;}
       <input type="password" id="lp" placeholder="Enter password" autocomplete="current-password">
     </div>
     <button class="btn btn-primary" onclick="doLogin()">Sign In →</button>
-    <p style="text-align:center;font-size:11px;color:var(--textm);margin-top:14px;">Adombra School Management &amp; Analytics Platform · v1.0 · build 11Nov-a</p>
+    <p style="text-align:center;font-size:11px;color:var(--textm);margin-top:14px;">Adombra School Management &amp; Analytics Platform · v1.0 · build 11Nov-c</p>
     <div id="conn-result" style="margin-top:8px;font-size:12px;text-align:center;display:none"></div>
   </div>
 </div>
@@ -971,12 +971,13 @@ function buildNav() {
 
   // Payments — admin and coordinators
   if (['admin','coordinator'].includes(r)) tabs.push({id:'payments',icon:'💰',label:'Payments'});
-  if (r==='viewer' && (hasPerm('et')||hasPerm('tm')||hasPerm('project')||hasPerm('totals')))
+  var moneyClear = perms.some(isMoneyToken);
+  if (r==='viewer' && (moneyClear||hasPerm('totals')))
     tabs.push({id:'payments',icon:'💰',label:'Payments'});
 
   // Ledger
   if (['admin','coordinator'].includes(r)) tabs.push({id:'ledger',icon:'📋',label:'Ledger'});
-  if (r==='viewer' && (hasPerm('ledger')||hasPerm('et')||hasPerm('tm')||hasPerm('project')||hasPerm('others'))) tabs.push({id:'ledger',icon:'📋',label:'Ledger'});
+  if (r==='viewer' && (hasPerm('ledger')||moneyClear)) tabs.push({id:'ledger',icon:'📋',label:'Ledger'});
 
   // Approvals
   if (r==='admin') tabs.push({id:'approvals',icon:'🔔',label:'Approve',badge:true});
@@ -1087,6 +1088,16 @@ function renderDashboard() {
   var pendingPay   = myPays.filter(function(p) { return p.approvalStatus === 'pending'; });
   var totalConf    = confirmedPay.reduce(function(s,p) { return s + (p.rawAmount||p.amount); }, 0);
   var totalUnalloc = confirmedPay.reduce(function(s,p) { return s + (p.unallocated||0); }, 0);
+  // Clearance: a coordinator sees only the fee purposes the admin allows, never the whole payment
+  var _vis = (r === 'coordinator') ? visiblePurposes() : null;
+  var _scopedHome = !!_vis && _vis.length < DB.purposes.length, _paidStu = 0;
+  if (_scopedHome) {
+    totalConf = clearedFigures(confirmedPay, _vis).total;
+    totalUnalloc = 0;
+    var _hg = {};
+    confirmedPay.forEach(function(p) { var k = p.student + '|' + p.class; (_hg[k] = _hg[k] || []).push(p); });
+    _paidStu = Object.keys(_hg).filter(function(k) { return clearedFigures(_hg[k], _vis).total > 0; }).length;
+  }
   var pendingAtt   = myAtt.filter(function(a) { return a.approvalStatus === 'pending'; }).length;
 
   var html = '<div class="sgrid">';
@@ -1108,7 +1119,7 @@ function renderDashboard() {
     html += '<div class="scard"><div class="sval">' + classCount + '</div><div class="slbl">My classes</div></div>';
     html += '<div class="scard gold"><div class="sval">' + studentCount + '</div><div class="slbl">My students</div></div>';
     html += '<div class="scard blue"><div class="sval">GHS ' + totalConf.toLocaleString() + '</div><div class="slbl">Collected (my classes)</div></div>';
-    html += '<div class="scard"><div class="sval">' + confirmedPay.length + '</div><div class="slbl">Confirmed payments</div></div>';
+    html += '<div class="scard"><div class="sval">' + (_scopedHome ? _paidStu : confirmedPay.length) + '</div><div class="slbl">' + (_scopedHome ? 'Students paid' : 'Confirmed payments') + '</div></div>';
     if (totalUnalloc > 0) {
       html += '<div class="scard" style="border-left:4px solid var(--gold)"><div class="sval" style="color:var(--gold)">GHS ' + totalUnalloc.toLocaleString() + '</div><div class="slbl">Unallocated</div></div>';
     }
@@ -1177,7 +1188,7 @@ function renderDashboard() {
     byPurpose['Extended Teaching'] = getETAmountFromPayments(confirmedPay);
     var colors = ['#1a6b3c','#c8860a','#1565c0','#c0392b','#6d28d9'];
     html += '<div class="card"><div class="ctitle"><span class="tic">&#128176;</span>My Collections by Purpose</div>'
-      + DB.purposes.map(function(pp,i){
+      + DB.purposes.filter(function(pp){ return !_vis || _vis.indexOf(pp.name) >= 0; }).map(function(pp,i){
           var amt = byPurpose[pp.name]||0;
           var pct = totalConf>0 ? Math.round(amt/totalConf*100) : 0;
           return '<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--grayb)">'
@@ -1496,9 +1507,14 @@ function renderPayments(filters) {
         return inClass;
       });
 
-  const confirmed = mine.filter(p => p.approvalStatus==='confirmed').reduce((s,p)=>s+(p.rawAmount||p.amount),0);
+  // Clearance: a coordinator's totals cover only the fee purposes the admin allows, never the whole payment
+  const _cv = r === 'coordinator' ? visiblePurposes() : null;
+  const _cs = !!_cv && _cv.length < DB.purposes.length;
+  const confirmed = _cs ? clearedFigures(mine.filter(p => p.approvalStatus==='confirmed'), _cv).total
+    : mine.filter(p => p.approvalStatus==='confirmed').reduce((s,p)=>s+(p.rawAmount||p.amount),0);
   const pending = mine.filter(p => p.approvalStatus==='pending').reduce((s,p)=>s+(p.rawAmount||p.amount),0);
-  const unallocated = mine.filter(p => p.approvalStatus==='confirmed').reduce((s,p)=>s+(p.unallocated||0),0);
+  const pendingCount = mine.filter(p => p.approvalStatus==='pending').length;
+  const unallocated = _cs ? 0 : mine.filter(p => p.approvalStatus==='confirmed').reduce((s,p)=>s+(p.unallocated||0),0);
 
   let html = `
     <div class="shdr"><div class="stitle">💰 Fee Payments</div>
@@ -1506,7 +1522,7 @@ function renderPayments(filters) {
     </div>
     <div class="sgrid" style="grid-template-columns:repeat(3,1fr)">
       <div class="scard"><div class="sval">GHS ${confirmed.toLocaleString()}</div><div class="slbl">Confirmed</div></div>
-      <div class="scard gold"><div class="sval">GHS ${pending.toLocaleString()}</div><div class="slbl">Pending</div></div>
+      <div class="scard gold"><div class="sval">${_cs ? pendingCount : 'GHS ' + pending.toLocaleString()}</div><div class="slbl">Pending</div></div>
       ${unallocated>0?`<div class="scard red"><div class="sval">GHS ${unallocated.toLocaleString()}</div><div class="slbl">Unallocated</div></div>`:''}
     </div>
     <div class="fbar">
@@ -1516,7 +1532,7 @@ function renderPayments(filters) {
       </select>
       <select id="pf-purpose" onchange="applyPayFilter()">
         <option value="">All Purposes</option>
-        ${DB.purposes.map(p=>`<option value="${_x(p.name)}" ${filters.purpose===p.name?'selected':''}>${_x(p.name)}</option>`).join('')}
+        ${DB.purposes.filter(p=>!_cv||_cv.indexOf(p.name)>=0).map(p=>`<option value="${_x(p.name)}" ${filters.purpose===p.name?'selected':''}>${_x(p.name)}</option>`).join('')}
       </select>
       <select id="pf-status" onchange="applyPayFilter()">
         <option value="">All Status</option>
@@ -1539,7 +1555,7 @@ function renderPayments(filters) {
     html += `<div class="card"><div class="empty"><div class="eico">💸</div><p>No payments yet.<br>Tap <strong>+ Record</strong> to add one.</p></div></div>`;
   } else {
     html += `<div class="card"><div class="twrap"><table>
-      <tr><th>Student</th><th>Class</th><th>Total Paid</th><th>ET</th><th>Unalloc</th><th>Status</th><th></th></tr>
+      ${_cs ? '<tr><th>Student</th><th>Class</th><th>Your clearance</th><th>Status</th><th></th></tr>' : '<tr><th>Student</th><th>Class</th><th>Total Paid</th><th>ET</th><th>Unalloc</th><th>Status</th><th></th></tr>'}
       ${filtered.slice(0,40).map(p => {
         const locked = p.approvalStatus==='confirmed' && r!=='admin';
         const etA = (p.allocations||[]).find(function(a){ return a.purpose==='Extended Teaching'; });
@@ -1548,9 +1564,10 @@ function renderPayments(filters) {
         return '<tr>'
           + '<td style="font-size:12px">' + p.student + (instCount>1?'<div style="font-size:10px;color:var(--textm)">' + instCount + ' payments</div>':'') + '</td>'
           + '<td>' + p.class + '</td>'
-          + '<td><strong>GHS ' + (p.rawAmount||p.amount) + '</strong></td>'
-          + '<td style="color:var(--g2)">GHS ' + etAmt2 + '</td>'
-          + '<td>' + (p.unallocated>0?'<span class="badge bgold">GHS '+p.unallocated+'</span>':'<span class="badge bg">Settled</span>') + '</td>'
+          + (_cs ? '<td><strong>' + (function(){ var t = clearedFigures([p], _cv).total; return t > 0 ? 'GHS ' + t : '&mdash;'; })() + '</strong></td>'
+                 : '<td><strong>GHS ' + (p.rawAmount||p.amount) + '</strong></td>'
+                   + '<td style="color:var(--g2)">GHS ' + etAmt2 + '</td>'
+                   + '<td>' + (p.unallocated>0?'<span class="badge bgold">GHS '+p.unallocated+'</span>':'<span class="badge bg">Settled</span>') + '</td>')
           + '<td><span class="badge ' + (p.approvalStatus==='confirmed'?'bg':'bgold') + '">' + cap(p.approvalStatus) + '</span></td>'
           + '<td>' + '<button class="btn btn-xs btn-outline" onclick="viewPayDetail(this.dataset.pid)" data-pid="'+p.id+'" title="View">&#128065;</button> <button class="btn btn-xs btn-outline" onclick="printReceipt(this.dataset.pid)" data-pid="'+p.id+'" title="Print receipt">&#128424;</button>'
           + (r==='admin' || !locked ? '<button class="btn btn-xs btn-outline" onclick="delPay(this.dataset.pid)" data-pid="'+p.id+'" title="Delete">&#128465;</button>' : '&#128274;') + '</td>'
@@ -1747,6 +1764,19 @@ function delPay(id) {
 function viewPayDetail(id) {
   const p = DB.payments.find(function(x){ return x.id===id; });
   if (!p) return;
+  // Clearance: a coordinator sees only the fee purposes the admin cleared, never the whole payment
+  const _cvd = currentUser.role === 'coordinator' ? visiblePurposes() : null;
+  if (_cvd && _cvd.length < DB.purposes.length) {
+    const _f = clearedFigures([p], _cvd);
+    const _rows = _cvd.filter(function(n){ return (_f.byPur[n] || 0) > 0; }).map(function(n){
+      return '<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--grayb);font-size:13px"><span>' + _x(n) + '</span><strong>GHS ' + _f.byPur[n] + '</strong></div>';
+    }).join('');
+    openModal(p.student + ' — Payment Detail', '<div style="margin-bottom:14px">'
+      + '<div class="scard" style="border-left:4px solid var(--g2);margin-bottom:10px"><div class="sval" style="font-size:18px">GHS ' + _f.total + '</div><div class="slbl">Within your clearance</div></div>'
+      + (_rows ? '<div style="font-size:13px;font-weight:700;margin-bottom:6px">Breakdown:</div>' + _rows : '<div style="font-size:13px;color:var(--textm)">Nothing on this payment is within your clearance.</div>')
+      + '<div style="font-size:11px;color:var(--textm);margin-top:10px">Recorded ' + _x(p.date) + '. You can see only the fee purposes your admin has cleared you for.</div></div>');
+    return;
+  }
   const etAmt = DB.paySettings.etAmount || 500;
   const etAlloc = Math.min(p.rawAmount||p.amount, etAmt);
   const allocations = p.allocations || [{ purpose:'Extended Teaching', amount:etAlloc }];
@@ -1788,6 +1818,10 @@ function renderCoordPaymentReport() {
   var total = confirmed.reduce(function(s,p){ return s + (p.rawAmount||p.amount); }, 0);
   var totalPending = pending.reduce(function(s,p){ return s + (p.rawAmount||p.amount); }, 0);
   var unallocated = confirmed.reduce(function(s,p){ return s + (p.unallocated||0); }, 0);
+  // Clearance: only the fee purposes the admin allows this coordinator, never the whole payment
+  var _vis = visiblePurposes(), _scoped = _vis.length < DB.purposes.length;
+  var _pl = DB.purposes.filter(function(pp){ return _vis.indexOf(pp.name) >= 0; });
+  if (_scoped) { total = clearedFigures(confirmed, _vis).total; unallocated = 0; }
 
   var confirmedIds = confirmed.map(function(p){ return p.id; });
   var etAmt = DB.paySettings.etAmount || 500;
@@ -1809,6 +1843,7 @@ function renderCoordPaymentReport() {
     var clsPays = confirmed.filter(function(p){ return p.class === cls; });
     var clsTotal = clsPays.reduce(function(s,p){ return s+(p.rawAmount||p.amount); },0);
     var clsUnalloc = clsPays.reduce(function(s,p){ return s+(p.unallocated||0); },0);
+    if (_scoped) { clsTotal = clearedFigures(clsPays, _vis).total; clsUnalloc = 0; }
     var clsByPur = {};
     DB.purposes.forEach(function(pp){ clsByPur[pp.name]=0; });
     (DB.allocations||[]).forEach(function(al){
@@ -1819,14 +1854,14 @@ function renderCoordPaymentReport() {
     clsByPur['Extended Teaching'] = getETAmountFromPayments(clsPays);
     if (clsTotal === 0) return '';
     return '<tr><td><strong>' + cls + '</strong></td>'
-      + DB.purposes.map(function(pp){ return '<td style="text-align:right;font-size:12px">'+(clsByPur[pp.name]>0?'GHS '+clsByPur[pp.name]:'-')+'</td>'; }).join('')
+      + _pl.map(function(pp){ return '<td style="text-align:right;font-size:12px">'+(clsByPur[pp.name]>0?'GHS '+clsByPur[pp.name]:'-')+'</td>'; }).join('')
       + '<td style="text-align:right"><strong>GHS '+clsTotal+'</strong></td>'
-      + '<td style="text-align:right">'+(clsUnalloc>0?'<span class="badge bgold">GHS '+clsUnalloc+'</span>':'<span class="badge bg">Done</span>')+'</td>'
+      + '<td style="text-align:right">'+(_scoped?'&mdash;':(clsUnalloc>0?'<span class="badge bgold">GHS '+clsUnalloc+'</span>':'<span class="badge bg">Done</span>'))+'</td>'
       + '</tr>';
   }).join('');
 
   // Purpose rows for summary
-  var purposeRows = DB.purposes.map(function(pp, i) {
+  var purposeRows = _pl.map(function(pp, i) {
     var amt = byPurpose[pp.name] || 0;
     var pct = total > 0 ? Math.round(amt/total*100) : 0;
     var bar = '<div style="flex:1;background:var(--grayb);border-radius:4px;height:8px;overflow:hidden">'
@@ -1844,10 +1879,10 @@ function renderCoordPaymentReport() {
   var html = '<div class="card" style="margin-top:14px">'
     + '<div class="ctitle"><span class="tic">&#128202;</span>My Collection Summary</div>'
     // KPI row
-    + '<div class="sgrid" style="grid-template-columns:repeat(3,1fr);margin-bottom:16px">'
+    + '<div class="sgrid" style="grid-template-columns:repeat('+(_scoped?2:3)+',1fr);margin-bottom:16px">'
     + '<div class="scard"><div class="sval">GHS '+total.toLocaleString()+'</div><div class="slbl">Confirmed</div></div>'
-    + '<div class="scard gold"><div class="sval">GHS '+totalPending.toLocaleString()+'</div><div class="slbl">Pending approval</div></div>'
-    + (unallocated>0?'<div class="scard red"><div class="sval">GHS '+unallocated.toLocaleString()+'</div><div class="slbl">Unallocated</div></div>':'<div class="scard"><div class="sval" style="color:var(--g2)">&#10003;</div><div class="slbl">Fully allocated</div></div>')
+    + (_scoped ? '<div class="scard gold"><div class="sval">'+pending.length+'</div><div class="slbl">Payments pending</div></div>' : '<div class="scard gold"><div class="sval">GHS '+totalPending.toLocaleString()+'</div><div class="slbl">Pending approval</div></div>')
+    + (_scoped ? '' : unallocated>0?'<div class="scard red"><div class="sval">GHS '+unallocated.toLocaleString()+'</div><div class="slbl">Unallocated</div></div>':'<div class="scard"><div class="sval" style="color:var(--g2)">&#10003;</div><div class="slbl">Fully allocated</div></div>')
     + '</div>'
     // Purpose breakdown with bars
     + '<div style="margin-bottom:16px">'
@@ -1859,7 +1894,7 @@ function renderCoordPaymentReport() {
         '<div style="font-size:12px;font-weight:700;color:var(--textm);margin-bottom:8px">BY CLASS</div>'
         + '<div class="twrap"><table>'
         + '<tr><th>Class</th>'
-        + DB.purposes.map(function(pp){ return '<th style="text-align:right">'+pp.name+'</th>'; }).join('')
+        + _pl.map(function(pp){ return '<th style="text-align:right">'+pp.name+'</th>'; }).join('')
         + '<th style="text-align:right">Total</th><th style="text-align:right">Status</th></tr>'
         + classRows
         + '</table></div>'
@@ -1873,13 +1908,13 @@ function renderCoordPaymentReport() {
     var canvas = document.getElementById('chart-coord-pay');
     if (!canvas) return;
     if (activeCharts['coord-pay']) { try { activeCharts['coord-pay'].destroy(); } catch(e){} }
-    var chartData = DB.purposes.map(function(pp){ return byPurpose[pp.name]||0; });
+    var chartData = _pl.map(function(pp){ return byPurpose[pp.name]||0; });
     var hasData = chartData.some(function(v){ return v > 0; });
     if (!hasData) return;
     activeCharts['coord-pay'] = new Chart(canvas, {
       type: 'doughnut',
       data: {
-        labels: DB.purposes.map(function(p){ return p.name; }),
+        labels: _pl.map(function(p){ return p.name; }),
         datasets: [{ data: chartData,
           backgroundColor: colors, borderWidth: 2, borderColor: '#fff' }]
       },
@@ -2634,6 +2669,7 @@ function openAddUser() {
     +'<input type="text" id="nu-teacher-link" placeholder="Teacher name (optional)"></div>'
     // Viewer permissions
     +viewerPermissionsHTML()
+    +moneyClearanceHTML()
     +'<button class="btn btn-primary" style="width:100%;margin-top:4px" onclick="submitAddUser()">Create User</button>'
   );
   toggleUserFields();
@@ -2654,6 +2690,7 @@ function toggleUserFields() {
   show('nu-teacher-grp', role === 'critical_friend');
   // viewer permissions
   show('nu-perm-grp', role === 'viewer');
+  show('nu-mc-grp', role === 'viewer' || role === 'coordinator');
 }
 
 async function submitAddUser() {
@@ -2686,6 +2723,9 @@ async function submitAddUser() {
   if (role === 'critical_friend') teacherLink = (document.getElementById('nu-teacher-link')||{}).value||'';
   if (role === 'viewer') {
     document.querySelectorAll('.nu-perm-cb:checked').forEach(function(cb){ perms.push(cb.value); });
+  }
+  if (role === 'viewer' || role === 'coordinator') {
+    document.querySelectorAll('.nu-mc-cb:checked').forEach(function(cb){ perms.push(cb.value); });
   }
 
   var nu = { id:uid(), username, role, name, classes, active:true, permissions:perms,
@@ -4343,6 +4383,7 @@ function openEditUser(id) {
     +'<select id="eu-classes" multiple style="height:120px;width:100%">'+classOpts+'</select>'
     +'<div style="font-size:11px;color:var(--textm);margin-top:3px">Hold Ctrl/Cmd to select multiple</div></div>'
     + viewerPermissionsHTML(u.permissions||[]).replace('id="nu-perm-grp"', 'id="eu-perm-grp" style="'+(u.role==='viewer'?'':'display:none')+'"').replace(/nu-perm-cb/g,'eu-perm-cb')
+    + moneyClearanceHTML(u.permissions||[]).replace('id="nu-mc-grp"', 'id="eu-mc-grp" style="'+((u.role==='viewer'||u.role==='coordinator')?'':'display:none')+'"').replace(/nu-mc-cb/g,'eu-mc-cb')
     +'<button class="btn btn-primary" style="width:100%;margin-top:10px" data-uid="'+id+'" onclick="saveEditUser(this.dataset.uid)">Save Changes</button>'
   );
 }
@@ -4352,6 +4393,8 @@ function toggleEUPerms() {
   var pg = document.getElementById('eu-perm-grp');
   var cg = document.getElementById('eu-cls-grp');
   if (pg) pg.style.display = role==='viewer' ? 'block' : 'none';
+  var mg = document.getElementById('eu-mc-grp');
+  if (mg) mg.style.display = (role==='viewer' || role==='coordinator') ? 'block' : 'none';
   if (cg) cg.style.display = role==='coordinator' ? '' : 'none';
 }
 
@@ -4365,8 +4408,11 @@ async function saveEditUser(id) {
   var clsSel = document.getElementById('eu-classes');
   var classes = (role==='coordinator' && clsSel) ? Array.from(clsSel.selectedOptions).map(function(o){ return o.value; }) : (u.classes||[]);
   var perms = [];
-  if (role === 'viewer') {
-    document.querySelectorAll('.eu-perm-cb:checked').forEach(function(cb){ perms.push(cb.value); });
+  if (role === 'viewer' || role === 'coordinator') {
+    // Keep the tokens this form does not manage (lesson_log, ttclass:..., pta_manage); replace the ones it does.
+    perms = (u.permissions || []).filter(function(t) { return !(isMoneyToken(t) || (role === 'viewer' && VIEWER_PERMISSIONS.some(function(x) { return x.id === t; }))); });
+    if (role === 'viewer') document.querySelectorAll('.eu-perm-cb:checked').forEach(function(cb){ perms.push(cb.value); });
+    document.querySelectorAll('.eu-mc-cb:checked').forEach(function(cb){ perms.push(cb.value); });
   } else { perms = u.permissions||[]; }
   if (!name.trim() || !uname.trim()) { showToast('Name and username required','error'); return; }
   if (pass && (pass.length < 10 || /^\d+$/.test(pass))) { showToast('Password must be at least 10 characters and not only numbers','error'); return; }
@@ -4425,6 +4471,7 @@ function viewerPermissionsHTML(existingPerms) {
   existingPerms = existingPerms || [];
   var groups = {};
   VIEWER_PERMISSIONS.forEach(function(p) {
+    if (LEGACY_PURPOSE_TOKENS.hasOwnProperty(p.id)) return; // purposes are ticked in the Money clearance block
     if (!groups[p.group]) groups[p.group] = [];
     groups[p.group].push(p);
   });
@@ -4445,6 +4492,20 @@ function viewerPermissionsHTML(existingPerms) {
     + '<button type="button" class="btn btn-outline btn-sm" onclick="toggleAllPerms(false)">Clear all</button>'
     + '</div></div>';
   return html2;
+}
+
+function moneyClearanceHTML(existingPerms) {
+  existingPerms = existingPerms || [];
+  var h = '<div id="nu-mc-grp" style="display:none;margin-top:12px;border:1px solid var(--grayb);border-radius:8px;padding:12px">'
+    + '<div style="font-size:12px;font-weight:700;color:var(--textm);margin-bottom:4px">MONEY CLEARANCE — fee purposes this person may SEE</div>'
+    + '<div style="font-size:11px;color:var(--textm);margin-bottom:8px">Recording a payment never needs clearance; seeing it does. A coordinator with none ticked gets the school default (Fee Schedule). A superintendent with none ticked sees no payments.</div>';
+  DB.purposes.forEach(function(pp) {
+    var tok = purposeToken(pp.name);
+    h += '<label style="display:flex;align-items:center;gap:8px;padding:5px 0;cursor:pointer">'
+      + '<input type="checkbox" class="nu-mc-cb" value="' + _x(tok) + '"' + (existingPerms.indexOf(tok) >= 0 ? ' checked' : '') + ' style="flex-shrink:0">'
+      + '<span style="font-size:13px;font-weight:500">' + _x(pp.name) + '</span></label>';
+  });
+  return h + '</div>';
 }
 
 function toggleAllPerms(state) {
@@ -4816,8 +4877,7 @@ function renderViewerPayments() {
   var html = '<div class="stitle" style="margin-bottom:14px">&#128202; Payment Overview</div>';
 
   // Determine which purposes this superintendent can see
-  var permMap = { et:'Extended Teaching', tm:'Teacher Motivation', project:'PTA Project', others:'Others' };
-  var visiblePurposes = Object.keys(permMap).filter(function(k){ return perms.includes(k); }).map(function(k){ return permMap[k]; });
+  var _vpList = purposesFromTokens(perms);
 
   // Helper: get allocated amount for a purpose across confirmed payments
   function getPurposeTotal(purName) {
@@ -4829,9 +4889,9 @@ function renderViewerPayments() {
   }
 
   // KPI cards — only show totals for the purposes they can see, NOT full school total
-  if (visiblePurposes.length > 0) {
+  if (_vpList.length > 0) {
     var purposeKPIs = '';
-    visiblePurposes.forEach(function(purName) {
+    _vpList.forEach(function(purName) {
       var amt = getPurposeTotal(purName);
       purposeKPIs += '<div class="scard"><div class="sval">GHS ' + amt.toLocaleString() + '</div><div class="slbl">' + purName + '</div></div>';
     });
@@ -4853,11 +4913,11 @@ function renderViewerPayments() {
       + '</div>';
   }
 
-  if (visiblePurposes.length > 0) {
+  if (_vpList.length > 0) {
     // Per-purpose summary — scoped totals only
     var colors = ['#1a6b3c','#c8860a','#1565c0','#c0392b','#6d28d9'];
     html += '<div class="card"><div class="ctitle"><span class="tic">&#128176;</span>Collections by Purpose</div>';
-    visiblePurposes.forEach(function(purName, i) {
+    _vpList.forEach(function(purName, i) {
       var purTotal = getPurposeTotal(purName);
       var expectedPerStudent = DB.purposes.find(function(p){ return p.name===purName; });
       var expectedTotal = expectedPerStudent ? (DB.students.length * expectedPerStudent.expected) : 0;
@@ -4880,7 +4940,7 @@ function renderViewerPayments() {
       // Only sum amounts for permitted purposes
       var clsPermTotal = 0;
       var clsPurAmts = {};
-      visiblePurposes.forEach(function(purName) {
+      _vpList.forEach(function(purName) {
         var amt;
         if (purName === 'Extended Teaching') {
           amt = getETAmountFromPayments(clsPays);
@@ -4894,7 +4954,7 @@ function renderViewerPayments() {
       html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--grayb)">'
         + '<span style="min-width:80px;font-weight:600">' + cls + '</span>'
         + '<div style="flex:1;display:flex;gap:10px;flex-wrap:wrap">';
-      visiblePurposes.forEach(function(purName) {
+      _vpList.forEach(function(purName) {
         var amt = clsPurAmts[purName] || 0;
         if (amt > 0) html += '<span style="font-size:12px;color:var(--textm)">' + purName.split(' ')[0] + ': <strong>GHS '+amt+'</strong></span>';
       });
@@ -4911,7 +4971,7 @@ function renderViewerPayments() {
     html += '</div>';
   }
 
-  if (!perms.includes('totals') && visiblePurposes.length === 0) {
+  if (!perms.includes('totals') && _vpList.length === 0) {
     html += '<div class="card"><div class="empty"><div class="eico">&#128274;</div><p>No payment permissions assigned.</p></div></div>';
   }
 
@@ -5264,7 +5324,7 @@ function renderSettings() {
     // Users
     var userRows = DB.users.map(function(u) {
       var classes = u.role==='viewer'
-        ? ((u.permissions||[]).map(function(p){ var pm=VIEWER_PERMISSIONS.find(function(x){ return x.id===p; }); return pm?pm.label:p; }).join(', ')||'No permissions')
+        ? ((u.permissions||[]).map(function(p){ var pm=VIEWER_PERMISSIONS.find(function(x){ return x.id===p; }); return pm?pm.label:(LEGACY_PURPOSE_TOKENS[p]||(String(p).indexOf('pur:')===0?String(p).slice(4):p)); }).join(', ')||'No permissions')
         : ((u.classes||[]).join(', ') || '—');
       return '<tr><td style="font-size:12px">'+(u.name||u.username)+'</td><td>'+u.username+'</td>'
         + '<td><span class="badge '+(u.role==='admin'?'bg':u.role==='coordinator'?'bgold':u.role==='viewer'?'bgray':'bgray')+'">'+(u.role==='viewer'?'Superintendent':u.role)+'</span></td>'
@@ -5371,7 +5431,7 @@ function renderSettings() {
   if (r === 'viewer') {
     var myPerms2 = (currentUser.permissions||[]).map(function(p){
       var pm = VIEWER_PERMISSIONS.find(function(x){ return x.id===p; });
-      return pm ? pm.label : p;
+      return pm ? pm.label : (LEGACY_PURPOSE_TOKENS[p] || (String(p).indexOf('pur:') === 0 ? String(p).slice(4) : p));
     });
     html += '<div class="card"><div class="ctitle"><span class="tic">&#128100;</span>My Account</div>'
       + '<table style="width:100%;font-size:13px"><tbody>'
@@ -5401,7 +5461,7 @@ function renderSettings() {
 
   // App info
   html += '<div style="text-align:center;padding:16px;color:var(--textm);font-size:11px">'
-    + 'ASMaP \u00b7 Adombra School Management &amp; Analytics Platform \u00b7 v1.0 · build 11Nov-a<br>'
+    + 'ASMaP \u00b7 Adombra School Management &amp; Analytics Platform \u00b7 v1.0 · build 11Nov-c<br>'
     + s.schoolName + ' \u00b7 ' + s.schoolLocation + '</div>';
 
   el.innerHTML = html;
@@ -6548,15 +6608,29 @@ function feeDue(name, cls, purpose) {
 }
 function studentDue(name, cls) { return DB.purposes.reduce(function(t, p) { return t + feeDue(name, cls, p.name); }, 0); }
 function _payCoordPurposes() { var c = DB.paySettings && DB.paySettings.coordPurposes; return (c && c.length) ? c : ['Extended Teaching']; }
+// ── Money clearance. The admin ticks, per person, the fee purposes that person may SEE.
+// Recording a payment never needs clearance; seeing it does. Tokens in profiles.permissions:
+// et / tm / project / others for the four standard purposes, 'pur:<name>' for any other purpose.
+var LEGACY_PURPOSE_TOKENS = { et: 'Extended Teaching', tm: 'Teacher Motivation', project: 'PTA Project', others: 'Others' };
+function purposeToken(name) { for (var k in LEGACY_PURPOSE_TOKENS) { if (LEGACY_PURPOSE_TOKENS[k] === name) return k; } return 'pur:' + name; }
+function isMoneyToken(t) { return LEGACY_PURPOSE_TOKENS.hasOwnProperty(t) || String(t).indexOf('pur:') === 0; }
+function purposesFromTokens(perms) {
+  perms = perms || [];
+  return DB.purposes.map(function(p) { return p.name; }).filter(function(n) { return perms.indexOf(purposeToken(n)) >= 0; });
+}
 function visiblePurposes() {
   var all = DB.purposes.map(function(p) { return p.name; });
-  if (currentUser && currentUser.role === 'coordinator') { var cp = _payCoordPurposes(); return all.filter(function(n) { return cp.indexOf(n) >= 0; }); }
-  if (currentUser && currentUser.role === 'viewer') {
-    // Superintendents see only the fee purposes the admin ticked for them. Only the 'ledger' permission opens every purpose.
-    var vp = currentUser.permissions || [];
-    if (vp.indexOf('ledger') >= 0) return all;
-    var vmap = { et: 'Extended Teaching', tm: 'Teacher Motivation', project: 'PTA Project', others: 'Others' };
-    return all.filter(function(n) { return Object.keys(vmap).some(function(k) { return vp.indexOf(k) >= 0 && vmap[k] === n; }); });
+  var role = currentUser && currentUser.role, perms = (currentUser && currentUser.permissions) || [];
+  if (role === 'coordinator') {
+    // The admin's ticks for this coordinator; if none are ticked, the school default (Fee Schedule: coordinators may collect)
+    var own = purposesFromTokens(perms);
+    if (own.length) return own;
+    var cp = _payCoordPurposes(); return all.filter(function(n) { return cp.indexOf(n) >= 0; });
+  }
+  if (role === 'viewer') {
+    // Superintendents see only what is ticked for them. Only the 'ledger' permission opens every purpose.
+    if (perms.indexOf('ledger') >= 0) return all;
+    return purposesFromTokens(perms);
   }
   return all;
 }
