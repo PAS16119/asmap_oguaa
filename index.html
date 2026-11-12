@@ -9,6 +9,10 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="ASMaP">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="icon" type="image/png" sizes="32x32" href="/icon-32.png">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Playfair+Display:wght@700;800&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
@@ -320,7 +324,7 @@ tr:hover td{background:#f9fafb;}
       <input type="password" id="lp" placeholder="Enter password" autocomplete="current-password">
     </div>
     <button class="btn btn-primary" onclick="doLogin()">Sign In →</button>
-    <p style="text-align:center;font-size:11px;color:var(--textm);margin-top:14px;">Adombra School Management &amp; Analytics Platform · v1.0 · build 11Nov-c</p>
+    <p style="text-align:center;font-size:11px;color:var(--textm);margin-top:14px;">Adombra School Management &amp; Analytics Platform · v1.0 · build 11Nov-e</p>
     <div id="conn-result" style="margin-top:8px;font-size:12px;text-align:center;display:none"></div>
   </div>
 </div>
@@ -483,6 +487,15 @@ function mapProfile(p) {
     mustChange:!!p.must_change_password };
 }
 
+var _pcViewOk = null;
+async function _paymentsSource() {
+  var role = currentUser && currentUser.role;
+  if (role !== 'coordinator' && role !== 'viewer') return 'payments';
+  if (_pcViewOk === null) {
+    try { var pr = await fetch(SUPA_URL + '/rest/v1/payments_cleared?select=id&limit=1', { headers: HDR }); _pcViewOk = pr.ok; } catch (e) { _pcViewOk = false; }
+  }
+  return _pcViewOk ? 'payments_cleared' : 'payments';
+}
 async function sbGet(table, params='') {
   // Supabase never returns more than 1000 rows in one request, even when a bigger limit is asked for.
   // So a request for more than 1000 rows is read in pages of 1000 until everything has arrived.
@@ -516,13 +529,15 @@ async function sbGet(table, params='') {
   return out;
 }
 async function sbPost(table, body) {
-  const r = await fetch(`${SUPA_URL}/rest/v1/${table}`, { method:'POST', headers: HDR, body: JSON.stringify(body) });
+  // A coordinator saves a payment without reading it back, so he needs no read access to the payments tables.
+  var _min = (table === 'payments' || table === 'payment_installments') && currentUser && currentUser.role !== 'admin';
+  const r = await fetch(`${SUPA_URL}/rest/v1/${table}`, { method:'POST', headers: _min ? Object.assign({}, HDR, {'Prefer':'return=minimal'}) : HDR, body: JSON.stringify(body) });
   if (!r.ok) {
     const err = await r.text();
     console.error('sbPost FAILED',table, r.status, err);
     throw new Error(`${r.status}: ${err}`);
   }
-  const d = await r.json(); return Array.isArray(d)?d[0]:d;
+  const t = await r.text(); const d = t ? JSON.parse(t) : null; return Array.isArray(d)?d[0]:d;
 }
 async function sbPatch(table, id, body) {
   const r = await fetch(`${SUPA_URL}/rest/v1/${table}?id=eq.${id}`, { method:'PATCH', headers:{...HDR,'Prefer':'return=minimal'}, body: JSON.stringify(body) });
@@ -688,9 +703,11 @@ async function syncFromSupabase(silent=false) {
       recordedBy:a.recorded_by, recordedByName:a.recorded_by_name||'', ts:new Date(a.created_at).getTime()
     }));
     // Payments
-    const pays = await sbGet('payments', 'select=*&order=created_at.desc&limit=20000');
-    // Only replace if Supabase has at least as many records as local (prevents overwrite on import)
-    if (pays && pays.length >= DB.payments.length) DB.payments = pays.map(p=>({
+    var _paySrc = await _paymentsSource();
+    const pays = await sbGet(_paySrc, 'select=*&order=created_at.desc&limit=20000');
+    // Only replace if Supabase has at least as many records as local (prevents overwrite on import).
+    // The cleared view can legitimately hold fewer rows than were kept locally, so it replaces unless a failed read gave nothing.
+    if (pays && (_paySrc === 'payments_cleared' ? (pays.length > 0 || DB.payments.length === 0) : pays.length >= DB.payments.length)) DB.payments = pays.map(p=>({
       id:p.id, student:p.student_name, class:p.class_name, purpose:p.purpose||'',
       amount:parseFloat(p.amount||0),
       rawAmount:parseFloat(p.raw_amount||p.amount||0),
@@ -715,7 +732,7 @@ async function syncFromSupabase(silent=false) {
       settledAt:a.settled_at, ts:new Date(a.created_at).getTime()
     }));
     // Installments
-    const installs = await sbGet('payment_installments', 'select=*&order=date.desc&limit=20000');
+    const installs = _paySrc === 'payments_cleared' ? [] : await sbGet('payment_installments', 'select=*&order=date.desc&limit=20000');
     if (installs && installs.length >= 0) DB.installments = installs.map(i=>({
       id:i.id, student:i.student_name, class:i.class_name, amount:parseFloat(i.amount),
       date:i.date, recordedBy:i.recorded_by, recordedByName:i.recorded_by_name
@@ -4467,6 +4484,68 @@ var VIEWER_PERMISSIONS = [
   { id:'audit',      group:'Analytics', label:'Audit trail', desc:'Full action log — who did what and when' },
 ];
 
+// ── Settings > Clearance: who is cleared for what, in one place (admin only)
+function _permLabel(t) {
+  var pm = VIEWER_PERMISSIONS.find(function(x) { return x.id === t; });
+  if (pm) return pm.label;
+  if (t === 'lesson_log') return 'Lesson Log recording';
+  if (t === 'lesson_reports') return 'Lesson reports';
+  if (t === 'pta_manage') return 'PTA management';
+  if (String(t).indexOf('ttclass:') === 0) return 'Records lessons for ' + String(t).slice(8);
+  return String(t);
+}
+function _unsettledConfirmed() {
+  return (DB.payments || []).filter(function(p) {
+    return p.approvalStatus === 'confirmed' && !(DB.allocations || []).some(function(a) { return a.paymentId === p.id; }) && (etPlan(p.student, p.class)[p.id] || 0) > 0;
+  });
+}
+function clearanceCardHtml() {
+  if (!currentUser || currentUser.role !== 'admin') return '';
+  var order = { coordinator: 0, viewer: 1 };
+  var users = (DB.users || []).filter(function(u) { return u.role !== 'admin'; }).sort(function(a, b) {
+    var ra = order[a.role] === undefined ? 9 : order[a.role], rb = order[b.role] === undefined ? 9 : order[b.role];
+    return ra - rb || String(a.name).localeCompare(String(b.name));
+  });
+  var dflt = _payCoordPurposes();
+  var rows = users.map(function(u) {
+    var perms = u.permissions || [], money, own = purposesFromTokens(perms);
+    if (u.role === 'coordinator') money = own.length ? _x(own.join(', ')) : '<span style="color:var(--textm)">' + _x(dflt.join(', ')) + ' (school default)</span>';
+    else if (u.role === 'viewer') money = perms.indexOf('ledger') >= 0 ? 'All purposes (ledger)' : (own.length ? _x(own.join(', ')) : '<span style="color:var(--textm)">No payments</span>') + (perms.indexOf('totals') >= 0 ? ' + school totals' : '');
+    else money = '<span style="color:var(--textm)">&mdash;</span>';
+    var other = perms.filter(function(t) { return !isMoneyToken(t) && t !== 'ledger' && t !== 'totals'; }).map(_permLabel);
+    return '<tr' + (u.active === false ? ' style="opacity:.5"' : '') + '>'
+      + '<td style="font-size:12px"><strong>' + _x(u.name) + '</strong><div style="font-size:10px;color:var(--textm)">' + _x(u.role) + (u.classes && u.classes.length ? ' &middot; ' + _x(u.classes.join(', ')) : '') + (u.active === false ? ' &middot; inactive' : '') + '</div></td>'
+      + '<td style="font-size:12px">' + money + '</td>'
+      + '<td style="font-size:11px;color:var(--textm)">' + (other.length ? _x(other.join(', ')) : '&mdash;') + '</td>'
+      + '<td><button class="btn btn-xs btn-outline" data-uid="' + _x(u.id) + '" onclick="openEditUser(this.dataset.uid)">Edit</button></td></tr>';
+  }).join('');
+  var pending = _unsettledConfirmed().length;
+  return '<div class="card"><div class="ctitle"><span class="tic">&#128274;</span>Clearance &mdash; who can see what</div>'
+    + '<p style="font-size:11px;color:var(--textm);margin-bottom:8px">The admin decides. A person sees only the fee purposes ticked for them (Edit &rsaquo; Money clearance). Coordinators with none ticked get the school default.</p>'
+    + (rows ? '<div class="twrap"><table><tr><th>Person</th><th>Sees money for</th><th>Other access</th><th></th></tr>' + rows + '</table></div>' : '<p style="font-size:12px;color:var(--textm)">No coordinators or superintendents yet.</p>')
+    + '<div style="margin-top:12px;padding:10px;border:1px solid var(--grayb);border-radius:8px">'
+    + '<div style="font-size:12px;font-weight:700;margin-bottom:4px">Database lock readiness</div>'
+    + '<div style="font-size:12px;margin-bottom:8px">' + (pending === 0 ? '&#10003; Every confirmed payment has its split recorded. It is safe to run <strong>21_payments_lock.sql</strong>.'
+        : '<strong>' + pending + '</strong> confirmed payment(s) have no recorded split (ASMaP counts their Extended Teaching automatically). Record it before running the lock, or coordinators will see those payments as nothing.')
+    + '</div>' + (pending ? '<button class="btn btn-primary btn-sm" onclick="settleOldPayments()">Record the missing Extended Teaching lines</button>' : '')
+    + '</div></div>';
+}
+async function settleOldPayments() {
+  var list = _unsettledConfirmed();
+  if (!list.length) { showToast('Nothing to record', 'success'); return; }
+  showConfirm('Record missing Extended Teaching lines', 'For ' + list.length + ' confirmed payment(s) this writes the Extended Teaching amount ASMaP already counts for them. Total collected does not change; the "need allocation" figure on those payments falls by the same amount.', async function() {
+    var ok = 0, bad = 0;
+    for (var i = 0; i < list.length; i++) {
+      var p = list[i], amt = etPlan(p.student, p.class)[p.id] || 0;
+      if (amt <= 0) continue;
+      var r = await _writeAllocations(p, [{ purpose: 'Extended Teaching', amount: amt }]);
+      if (r.ok) ok++; else bad++;
+    }
+    audit('SETTLE_OLD_PAYMENTS', ok + ' written, ' + bad + ' failed', 'payments', '');
+    showToast(bad ? ('Recorded ' + ok + '; ' + bad + ' failed. Press Refresh and try again.') : ('Recorded ' + ok + ' payment(s) ✓'), bad ? 'warning' : 'success');
+    renderSettings();
+  }, 'Record', 'btn-primary');
+}
 function viewerPermissionsHTML(existingPerms) {
   existingPerms = existingPerms || [];
   var groups = {};
@@ -5308,6 +5387,7 @@ function renderSettings() {
       + '</div>';
 
     html += feeScheduleCardHtml();
+    html += clearanceCardHtml();
 
     // Teaching Days
     var days = ['Mon','Tue','Wed','Thu','Fri','Sat'];
@@ -5461,7 +5541,7 @@ function renderSettings() {
 
   // App info
   html += '<div style="text-align:center;padding:16px;color:var(--textm);font-size:11px">'
-    + 'ASMaP \u00b7 Adombra School Management &amp; Analytics Platform \u00b7 v1.0 · build 11Nov-c<br>'
+    + 'ASMaP \u00b7 Adombra School Management &amp; Analytics Platform \u00b7 v1.0 · build 11Nov-e<br>'
     + s.schoolName + ' \u00b7 ' + s.schoolLocation + '</div>';
 
   el.innerHTML = html;
@@ -8341,6 +8421,44 @@ if ('serviceWorker' in navigator) {
     });
   });
 }
+
+// Install to Home Screen: a small button on Android/Chrome, a how-to hint on iPhone/iPad. Hidden once installed or dismissed.
+(function() {
+  if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true) return;
+  var KEY = 'asmap_install_hidden', deferred = null;
+  function dismissed() { try { return localStorage.getItem(KEY) === '1'; } catch (e) { return false; } }
+  function hidePill(remember) {
+    if (remember) { try { localStorage.setItem(KEY, '1'); } catch (e) {} }
+    var el = document.getElementById('install-pill'); if (el) el.remove();
+  }
+  function showPill(text, onInstall) {
+    if (dismissed() || document.getElementById('install-pill')) return;
+    var d = document.createElement('div'); d.id = 'install-pill';
+    d.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:16px;z-index:9999;background:var(--g1);color:#fff;border-radius:999px;padding:9px 10px 9px 16px;display:flex;gap:10px;align-items:center;font-size:13px;box-shadow:0 6px 24px rgba(0,0,0,.25);max-width:92vw';
+    var t = document.createElement('span'); t.textContent = text; d.appendChild(t);
+    if (onInstall) {
+      var b = document.createElement('button'); b.textContent = 'Install';
+      b.style.cssText = 'background:var(--gold2);color:#111;border:0;border-radius:999px;padding:6px 14px;font-weight:700;font-size:13px;cursor:pointer';
+      b.addEventListener('click', onInstall); d.appendChild(b);
+    }
+    var x = document.createElement('button'); x.setAttribute('aria-label', 'Dismiss'); x.innerHTML = '&times;';
+    x.style.cssText = 'background:transparent;color:#fff;border:0;font-size:20px;line-height:1;cursor:pointer;padding:0 6px';
+    x.addEventListener('click', function() { hidePill(true); }); d.appendChild(x);
+    document.body.appendChild(d);
+  }
+  window.addEventListener('beforeinstallprompt', function(e) {
+    e.preventDefault(); deferred = e;
+    showPill('Install ASMaP on this device', function() {
+      if (!deferred) return;
+      deferred.prompt();
+      deferred.userChoice.then(function() { deferred = null; hidePill(true); });
+    });
+  });
+  window.addEventListener('appinstalled', function() { hidePill(true); });
+  if (/iphone|ipad|ipod/i.test(navigator.userAgent)) {
+    setTimeout(function() { showPill('To install: tap Share, then Add to Home Screen'); }, 4000);
+  }
+})();
 
 // SYNC EXTENSION — load scores/pta/behaviour from Supabase
 var _origSync = syncFromSupabase;
