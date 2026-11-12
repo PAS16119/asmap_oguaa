@@ -324,7 +324,7 @@ tr:hover td{background:#f9fafb;}
       <input type="password" id="lp" placeholder="Enter password" autocomplete="current-password">
     </div>
     <button class="btn btn-primary" onclick="doLogin()">Sign In →</button>
-    <p style="text-align:center;font-size:11px;color:var(--textm);margin-top:14px;">Adombra School Management &amp; Analytics Platform · v1.0 · build 11Nov-e</p>
+    <p style="text-align:center;font-size:11px;color:var(--textm);margin-top:14px;">Adombra School Management &amp; Analytics Platform · v1.0 · build 11Nov-f</p>
     <div id="conn-result" style="margin-top:8px;font-size:12px;text-align:center;display:none"></div>
   </div>
 </div>
@@ -983,7 +983,7 @@ function buildNav() {
   var tabs = [{id:'dashboard',icon:'📊',label:'Home'}];
 
   // Attendance — staff who monitor teachers
-  if (['admin','coordinator','supervisor','hod','critical_friend','viewer'].includes(r))
+  if (['admin','coordinator','supervisor','hod','critical_friend','viewer'].includes(r) && !(r==='coordinator' && !canMarkAttendance()))
     tabs.push({id:'attendance',icon:'✅',label:'Attendance'});
 
   // Payments — admin and coordinators
@@ -1153,7 +1153,8 @@ function renderDashboard() {
 
   html += '</div>';
 
-  // Recent attendance (for coordinator/supervisor: from their classes; for admin: all)
+  // Recent attendance (for coordinator/supervisor: from their classes; for admin: all). A money-only coordinator has none.
+  if (r === 'coordinator' && !canMarkAttendance()) myAtt = [];
   var recent = myAtt.slice().sort(function(a,b) { return b.ts - a.ts; }).slice(0,5);
   html += '<div class="card"><div class="ctitle"><span class="tic">&#128336;</span>Recent Attendance'
     + (r !== 'admin' ? ' <span style="font-size:11px;color:var(--textm);font-weight:400">— my classes</span>' : '')
@@ -1248,6 +1249,10 @@ function buildAttRow(a, locked) {
 function renderAttendance(filters) {
   if (currentUser.role === 'viewer') { renderViewerAttendance(); return; }
   const el = document.getElementById('page-attendance');
+  if (currentUser.role === 'coordinator' && !canMarkAttendance()) {
+    el.innerHTML = '<div class="card"><div class="empty"><div class="eico">&#128274;</div><p>Your account collects money only. Teacher attendance is not part of your duties.</p></div></div>';
+    return;
+  }
   const r = currentUser.role;
   const today = todayStr();
   filters = filters || { date: '', cls: '', status: '' };
@@ -1415,6 +1420,7 @@ function addAndPickRow(type, n, val) {
 }
 
 async function submitAttBulk() {
+  if (!canMarkAttendance()) { showToast('Your account does not mark attendance', 'error'); return; }
   const date = document.getElementById('af2-date').value;
   if (!date) { showToast('Select a date first','error'); return; }
   const rows = document.querySelectorAll('#att-rows > div[id^="att-row-"]');
@@ -2656,7 +2662,7 @@ function openAddUser() {
     +'<div class="fgrp"><label>PHONE (for SMS notifications)</label><input type="tel" id="nu-phone" placeholder="0241234567"></div>'
     +'<div class="fgrp"><label>ROLE</label>'
     +'<select id="nu-role" onchange="toggleUserFields()">'
-    +'<option value="coordinator">Coordinator (payment + attendance)</option>'
+    +'<option value="coordinator">Coordinator (money; attendance optional)</option>'
     +'<option value="supervisor">Supervisor (teacher monitoring)</option>'
     +'<option value="hod">HOD (head of department)</option>'
     +'<option value="critical_friend">Critical Friend (peer observer)</option>'
@@ -2686,7 +2692,7 @@ function openAddUser() {
     +'<input type="text" id="nu-teacher-link" placeholder="Teacher name (optional)"></div>'
     // Viewer permissions
     +viewerPermissionsHTML()
-    +moneyClearanceHTML()
+    +moneyClearanceHTML([], '')
     +'<button class="btn btn-primary" style="width:100%;margin-top:4px" onclick="submitAddUser()">Create User</button>'
   );
   toggleUserFields();
@@ -2708,6 +2714,7 @@ function toggleUserFields() {
   // viewer permissions
   show('nu-perm-grp', role === 'viewer');
   show('nu-mc-grp', role === 'viewer' || role === 'coordinator');
+  show('nu-att-row', role === 'coordinator');
 }
 
 async function submitAddUser() {
@@ -2743,6 +2750,11 @@ async function submitAddUser() {
   }
   if (role === 'viewer' || role === 'coordinator') {
     document.querySelectorAll('.nu-mc-cb:checked').forEach(function(cb){ perms.push(cb.value); });
+  }
+  if (role === 'coordinator' && (document.getElementById('nu-moneyonly') || {}).checked) {
+    var _clash = moneyCollectorConflicts(classes, '');
+    if (_clash.length) { showToast('One money collector per class. Already assigned: ' + _clash.join(', '), 'error'); return; }
+    perms.push('no_attendance');
   }
 
   var nu = { id:uid(), username, role, name, classes, active:true, permissions:perms,
@@ -4400,7 +4412,7 @@ function openEditUser(id) {
     +'<select id="eu-classes" multiple style="height:120px;width:100%">'+classOpts+'</select>'
     +'<div style="font-size:11px;color:var(--textm);margin-top:3px">Hold Ctrl/Cmd to select multiple</div></div>'
     + viewerPermissionsHTML(u.permissions||[]).replace('id="nu-perm-grp"', 'id="eu-perm-grp" style="'+(u.role==='viewer'?'':'display:none')+'"').replace(/nu-perm-cb/g,'eu-perm-cb')
-    + moneyClearanceHTML(u.permissions||[]).replace('id="nu-mc-grp"', 'id="eu-mc-grp" style="'+((u.role==='viewer'||u.role==='coordinator')?'':'display:none')+'"').replace(/nu-mc-cb/g,'eu-mc-cb')
+    + moneyClearanceHTML(u.permissions||[], u.role).replace('id="nu-moneyonly"','id="eu-moneyonly"').replace('id="nu-att-row"','id="eu-att-row"').replace('id="nu-mc-grp"', 'id="eu-mc-grp" style="'+((u.role==='viewer'||u.role==='coordinator')?'':'display:none')+'"').replace(/nu-mc-cb/g,'eu-mc-cb')
     +'<button class="btn btn-primary" style="width:100%;margin-top:10px" data-uid="'+id+'" onclick="saveEditUser(this.dataset.uid)">Save Changes</button>'
   );
 }
@@ -4412,6 +4424,8 @@ function toggleEUPerms() {
   if (pg) pg.style.display = role==='viewer' ? 'block' : 'none';
   var mg = document.getElementById('eu-mc-grp');
   if (mg) mg.style.display = (role==='viewer' || role==='coordinator') ? 'block' : 'none';
+  var ar = document.getElementById('eu-att-row');
+  if (ar) ar.style.display = role==='coordinator' ? 'block' : 'none';
   if (cg) cg.style.display = role==='coordinator' ? '' : 'none';
 }
 
@@ -4427,9 +4441,14 @@ async function saveEditUser(id) {
   var perms = [];
   if (role === 'viewer' || role === 'coordinator') {
     // Keep the tokens this form does not manage (lesson_log, ttclass:..., pta_manage); replace the ones it does.
-    perms = (u.permissions || []).filter(function(t) { return !(isMoneyToken(t) || (role === 'viewer' && VIEWER_PERMISSIONS.some(function(x) { return x.id === t; }))); });
+    perms = (u.permissions || []).filter(function(t) { return t !== 'no_attendance' && !(isMoneyToken(t) || (role === 'viewer' && VIEWER_PERMISSIONS.some(function(x) { return x.id === t; }))); });
     if (role === 'viewer') document.querySelectorAll('.eu-perm-cb:checked').forEach(function(cb){ perms.push(cb.value); });
     document.querySelectorAll('.eu-mc-cb:checked').forEach(function(cb){ perms.push(cb.value); });
+    if (role === 'coordinator' && (document.getElementById('eu-moneyonly') || {}).checked) {
+      var _clash2 = moneyCollectorConflicts(classes, id);
+      if (_clash2.length) { showToast('One money collector per class. Already assigned: ' + _clash2.join(', '), 'error'); return; }
+      perms.push('no_attendance');
+    }
   } else { perms = u.permissions||[]; }
   if (!name.trim() || !uname.trim()) { showToast('Name and username required','error'); return; }
   if (pass && (pass.length < 10 || /^\d+$/.test(pass))) { showToast('Password must be at least 10 characters and not only numbers','error'); return; }
@@ -4512,7 +4531,8 @@ function clearanceCardHtml() {
     if (u.role === 'coordinator') money = own.length ? _x(own.join(', ')) : '<span style="color:var(--textm)">' + _x(dflt.join(', ')) + ' (school default)</span>';
     else if (u.role === 'viewer') money = perms.indexOf('ledger') >= 0 ? 'All purposes (ledger)' : (own.length ? _x(own.join(', ')) : '<span style="color:var(--textm)">No payments</span>') + (perms.indexOf('totals') >= 0 ? ' + school totals' : '');
     else money = '<span style="color:var(--textm)">&mdash;</span>';
-    var other = perms.filter(function(t) { return !isMoneyToken(t) && t !== 'ledger' && t !== 'totals'; }).map(_permLabel);
+    var other = perms.filter(function(t) { return !isMoneyToken(t) && t !== 'ledger' && t !== 'totals' && t !== 'no_attendance'; }).map(_permLabel);
+    if (u.role === 'coordinator') other.unshift(perms.indexOf('no_attendance') >= 0 ? 'Money only (no attendance)' : 'Money + attendance');
     return '<tr' + (u.active === false ? ' style="opacity:.5"' : '') + '>'
       + '<td style="font-size:12px"><strong>' + _x(u.name) + '</strong><div style="font-size:10px;color:var(--textm)">' + _x(u.role) + (u.classes && u.classes.length ? ' &middot; ' + _x(u.classes.join(', ')) : '') + (u.active === false ? ' &middot; inactive' : '') + '</div></td>'
       + '<td style="font-size:12px">' + money + '</td>'
@@ -4520,8 +4540,11 @@ function clearanceCardHtml() {
       + '<td><button class="btn btn-xs btn-outline" data-uid="' + _x(u.id) + '" onclick="openEditUser(this.dataset.uid)">Edit</button></td></tr>';
   }).join('');
   var pending = _unsettledConfirmed().length;
+  var _cc = {}; users.forEach(function(u) { if (u.role === 'coordinator' && u.active !== false && (u.permissions || []).indexOf('no_attendance') >= 0) (u.classes || []).forEach(function(c) { (_cc[c] = _cc[c] || []).push(u.name); }); });
+  var _dups = Object.keys(_cc).filter(function(c) { return _cc[c].length > 1; }).map(function(c) { return c + ': ' + _cc[c].join(', '); });
   return '<div class="card"><div class="ctitle"><span class="tic">&#128274;</span>Clearance &mdash; who can see what</div>'
     + '<p style="font-size:11px;color:var(--textm);margin-bottom:8px">The admin decides. A person sees only the fee purposes ticked for them (Edit &rsaquo; Money clearance). Coordinators with none ticked get the school default.</p>'
+    + (_dups.length ? '<div style="font-size:12px;padding:8px;margin-bottom:8px;border-radius:8px;background:var(--redp);color:var(--red)">More than one money-only collector on the same class (the rule is one per class): ' + _x(_dups.join(' | ')) + '</div>' : '')
     + (rows ? '<div class="twrap"><table><tr><th>Person</th><th>Sees money for</th><th>Other access</th><th></th></tr>' + rows + '</table></div>' : '<p style="font-size:12px;color:var(--textm)">No coordinators or superintendents yet.</p>')
     + '<div style="margin-top:12px;padding:10px;border:1px solid var(--grayb);border-radius:8px">'
     + '<div style="font-size:12px;font-weight:700;margin-bottom:4px">Database lock readiness</div>'
@@ -4573,9 +4596,12 @@ function viewerPermissionsHTML(existingPerms) {
   return html2;
 }
 
-function moneyClearanceHTML(existingPerms) {
+function moneyClearanceHTML(existingPerms, role) {
   existingPerms = existingPerms || [];
   var h = '<div id="nu-mc-grp" style="display:none;margin-top:12px;border:1px solid var(--grayb);border-radius:8px;padding:12px">'
+    + '<div id="nu-att-row" style="display:' + (role === 'coordinator' ? 'block' : 'none') + ';margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--grayb)">'
+    + '<label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer"><input type="checkbox" id="nu-moneyonly"' + (existingPerms.indexOf('no_attendance') >= 0 ? ' checked' : '') + ' style="flex-shrink:0;margin-top:2px">'
+    + '<span style="font-size:13px"><strong>Money collector only</strong> &mdash; cannot mark teacher attendance. Leave unticked for a coordinator who collects money AND marks attendance. One money-only collector per class.</span></label></div>'
     + '<div style="font-size:12px;font-weight:700;color:var(--textm);margin-bottom:4px">MONEY CLEARANCE — fee purposes this person may SEE</div>'
     + '<div style="font-size:11px;color:var(--textm);margin-bottom:8px">Recording a payment never needs clearance; seeing it does. A coordinator with none ticked gets the school default (Fee Schedule). A superintendent with none ticked sees no payments.</div>';
   DB.purposes.forEach(function(pp) {
@@ -5541,7 +5567,7 @@ function renderSettings() {
 
   // App info
   html += '<div style="text-align:center;padding:16px;color:var(--textm);font-size:11px">'
-    + 'ASMaP \u00b7 Adombra School Management &amp; Analytics Platform \u00b7 v1.0 · build 11Nov-e<br>'
+    + 'ASMaP \u00b7 Adombra School Management &amp; Analytics Platform \u00b7 v1.0 · build 11Nov-f<br>'
     + s.schoolName + ' \u00b7 ' + s.schoolLocation + '</div>';
 
   el.innerHTML = html;
@@ -6697,6 +6723,22 @@ function isMoneyToken(t) { return LEGACY_PURPOSE_TOKENS.hasOwnProperty(t) || Str
 function purposesFromTokens(perms) {
   perms = perms || [];
   return DB.purposes.map(function(p) { return p.name; }).filter(function(n) { return perms.indexOf(purposeToken(n)) >= 0; });
+}
+// A coordinator collects money, and may or may not also mark teacher attendance. The admin decides, per person:
+// the token 'no_attendance' marks a money-only collector. Everyone else keeps the attendance rights their role has.
+function canMarkAttendance() {
+  if (!currentUser) return false;
+  if (currentUser.role === 'coordinator') return (currentUser.permissions || []).indexOf('no_attendance') < 0;
+  return ['admin', 'supervisor', 'hod', 'critical_friend'].indexOf(currentUser.role) >= 0;
+}
+// Classes where more than one active money-only collector is assigned (the rule is one per class)
+function moneyCollectorConflicts(classes, excludeId) {
+  var out = [];
+  (classes || []).forEach(function(c) {
+    var other = (DB.users || []).find(function(u) { return u.id !== excludeId && u.active !== false && u.role === 'coordinator' && (u.permissions || []).indexOf('no_attendance') >= 0 && (u.classes || []).indexOf(c) >= 0; });
+    if (other) out.push(c + ' (' + other.name + ')');
+  });
+  return out;
 }
 function visiblePurposes() {
   var all = DB.purposes.map(function(p) { return p.name; });
