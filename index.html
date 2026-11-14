@@ -324,7 +324,7 @@ tr:hover td{background:#f9fafb;}
       <input type="password" id="lp" placeholder="Enter password" autocomplete="current-password">
     </div>
     <button class="btn btn-primary" onclick="doLogin()">Sign In →</button>
-    <p style="text-align:center;font-size:11px;color:var(--textm);margin-top:14px;">Adombra School Management &amp; Analytics Platform · v1.0 · build 11Nov-f</p>
+    <p style="text-align:center;font-size:11px;color:var(--textm);margin-top:14px;">Adombra School Management &amp; Analytics Platform · v1.0 · build 12Nov-a</p>
     <div id="conn-result" style="margin-top:8px;font-size:12px;text-align:center;display:none"></div>
   </div>
 </div>
@@ -1092,9 +1092,11 @@ function renderDashboard() {
 
   // Attendance: admin sees all, coordinator sees all (they mark for whole school)
   // Supervisor sees only their assigned classes
-  var myAtt = (r === 'admin' || r === 'coordinator')
+  var myAtt = (r === 'admin' || r === 'coordinator' || r === 'hod')
     ? DB.attendance
-    : DB.attendance.filter(function(a) { return myClasses.includes(a.class); });
+    : r === 'critical_friend'
+      ? DB.attendance.filter(function(a) { return a.recordedBy === currentUser.id; })
+      : DB.attendance.filter(function(a) { return myClasses.includes(a.class); });
   var todayAtt = myAtt.filter(function(a) { return a.date === today; });
 
   // Payments: admin sees all, coordinator sees ONLY their classes
@@ -1260,9 +1262,13 @@ function renderAttendance(filters) {
   // Admin sees all; Coordinator sees ALL (they mark for whole school but audit trail shows who marked)
   // Supervisor sees only their assigned classes
   var myClasses2 = currentUser.classes || [];
-  let all = (r === 'admin' || r === 'coordinator')
+  // Admin, coordinators and HODs see every record; a supervisor sees only their assigned classes;
+  // a critical friend sees only the records they recorded themselves.
+  let all = (r === 'admin' || r === 'coordinator' || r === 'hod')
     ? DB.attendance
-    : DB.attendance.filter(function(a) { return myClasses2.includes(a.class); });
+    : r === 'critical_friend'
+      ? DB.attendance.filter(function(a) { return a.recordedBy === currentUser.id; })
+      : DB.attendance.filter(function(a) { return myClasses2.includes(a.class); });
 
   let html = `
     <div class="shdr">
@@ -1334,8 +1340,8 @@ function addAttRow() {
   div.style.cssText = 'border:1px solid var(--grayb);border-radius:8px;padding:12px;margin-bottom:10px;background:var(--grayl);position:relative';
 
   const periodOpts = getPeriodNames().map(p => '<option>' + p + '</option>').join('');
-  // Coordinators can mark attendance for ANY class (they manage the whole school)
-  const availClasses = DB.classes;
+  // Coordinators, HODs and critical friends can mark any class; a supervisor only their assigned classes
+  const availClasses = currentUser.role === 'supervisor' ? (currentUser.classes || []) : DB.classes;
   const classOpts = availClasses.map(c => '<option>' + c + '</option>').join('');
 
   div.innerHTML = ''
@@ -3186,11 +3192,10 @@ function printReceipt(id) {
     return true;
   });
 
-  if (currentUser && currentUser.role === 'coordinator') {
-    var _vis = visiblePurposes(), _other = 0;
-    allocs = allocs.filter(function(a){ if (_vis.indexOf(a.purpose) >= 0) return true; _other += a.amount; return false; });
-    if (_other > 0) allocs.push({purpose:'Other school fees', amount:_other});
-  }
+  var _vp = visiblePurposes();
+  var _scopedR = !!currentUser && currentUser.role === 'coordinator' && _vp.length < DB.purposes.length;
+  var _cfR = _scopedR ? clearedFigures([p], _vp) : null;
+  if (_scopedR) { total = _cfR.total; installs = []; }
   // Build allocation table rows
   var allocRows = '';
   // Always show ET even if only allocation is other purposes (it's auto-allocated)
@@ -3208,6 +3213,12 @@ function printReceipt(id) {
   }
 
   if (allocs.length > 0 && p.unallocated > 0 && p.approvalStatus === 'confirmed') allocRows += '<tr><td style="padding:4px 8px;color:#856404">Awaiting allocation by the school</td><td style="padding:4px 8px;text-align:right;color:#856404">GHS ' + p.unallocated + '</td></tr>';
+  if (_scopedR) {
+    // Only the cleared purposes print: no other purposes, no lump of "other fees", no unallocated balance
+    allocRows = _vp.filter(function(n){ return (_cfR.byPur[n] || 0) > 0; }).map(function(n){
+      return '<tr><td style="padding:4px 8px">' + n + '</td><td style="padding:4px 8px;text-align:right"><strong>GHS ' + _cfR.byPur[n] + '</strong></td></tr>';
+    }).join('');
+  }
   var isAdminR = currentUser && currentUser.role === 'admin';
   var bal = getStudentBalance(p.student, p.class), dueAll = studentDue(p.student, p.class);
   var paidAll = DB.payments.filter(function(q){ return q.student===p.student && q.class===p.class && q.approvalStatus==='confirmed'; }).reduce(function(t,q){ return t+(q.rawAmount||q.amount); }, 0);
@@ -3244,8 +3255,9 @@ function printReceipt(id) {
     + '</table>'
     + '<h3>Payment Breakdown</h3>'
     + '<table>' + allocRows
-    + '<tr class="total-row"><td style="padding:6px 8px">TOTAL PAID</td><td style="padding:6px 8px;text-align:right">GHS ' + total + '</td></tr>'
+    + '<tr class="total-row"><td style="padding:6px 8px">' + (_scopedR ? 'TOTAL FOR THE FEES LISTED' : 'TOTAL PAID') + '</td><td style="padding:6px 8px;text-align:right">GHS ' + total + '</td></tr>'
     + '</table>'
+    + (_scopedR ? '<p style="font-size:11px;color:#666;margin:6px 0 0">This receipt covers the fee purposes listed above only.</p>' : '')
     + acctHtml
     + (installs.length > 1 ? ('<h3>Payment History (' + installs.length + ' instalments)</h3><table><tr style="background:#f5f5f5"><th style="padding:4px 8px;text-align:left">Date</th><th style="padding:4px 8px;text-align:right">Amount</th><th style="padding:4px 8px">Recorded by</th></tr>' + installRows + '</table>') : '')
     + '<div style="margin-top:16px;padding:10px;background:#f9f9f9;border-radius:6px;font-size:11px;color:#666;text-align:center">'
@@ -5567,7 +5579,7 @@ function renderSettings() {
 
   // App info
   html += '<div style="text-align:center;padding:16px;color:var(--textm);font-size:11px">'
-    + 'ASMaP \u00b7 Adombra School Management &amp; Analytics Platform \u00b7 v1.0 · build 11Nov-f<br>'
+    + 'ASMaP \u00b7 Adombra School Management &amp; Analytics Platform \u00b7 v1.0 · build 12Nov-a<br>'
     + s.schoolName + ' \u00b7 ' + s.schoolLocation + '</div>';
 
   el.innerHTML = html;
