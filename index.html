@@ -239,6 +239,56 @@ tr:hover td{background:#f9fafb;}
   .modal{border-radius:16px;margin-bottom:20px;}
 }
 </style>
+<style id="premium-ui">
+/* ===== PREMIUM UI: grouped menu + refined clickables ===== */
+:root{--ease:cubic-bezier(.22,.61,.36,1);--ring:0 0 0 3px rgba(45,149,88,.30);}
+button,.btn,.ntab,.ngroup{-webkit-tap-highlight-color:transparent;}
+.nav-tabs{display:block;overflow:visible;padding:0;background:#fff;border-bottom:none;box-shadow:0 6px 20px rgba(10,61,31,.08);position:relative;z-index:50;}
+.nav-main{display:flex;gap:2px;padding:8px 6px 7px;overflow-x:auto;scrollbar-width:none;}
+.nav-main::-webkit-scrollbar,.nav-sub::-webkit-scrollbar{display:none;}
+.nav-tabs .nav-item{flex:1 1 0;min-width:56px;display:flex;flex-direction:column;align-items:center;gap:4px;padding:5px 3px 6px;border:none;background:none;border-radius:14px;cursor:pointer;font-family:'Outfit',sans-serif;font-size:10.5px;font-weight:600;letter-spacing:.2px;color:var(--textm);position:relative;white-space:nowrap;transition:color .2s var(--ease),background .2s var(--ease);}
+.nav-tabs .nav-item .tico{width:38px;height:30px;display:flex;align-items:center;justify-content:center;font-size:17px;border-radius:11px;background:var(--g5);transition:transform .2s var(--ease),box-shadow .2s var(--ease),background .2s var(--ease);}
+.nav-tabs .nav-item:hover{color:var(--g2);}
+.nav-tabs .nav-item:hover .tico{transform:translateY(-1px);box-shadow:0 4px 10px rgba(26,107,60,.16);}
+.nav-tabs .nav-item:active .tico{transform:scale(.94);}
+.nav-tabs .nav-item.active{color:var(--g1);font-weight:700;border-bottom:none;}
+.nav-tabs .nav-item.active .tico{background:linear-gradient(135deg,var(--g1),var(--g2) 55%,var(--g3));box-shadow:0 6px 14px rgba(26,107,60,.38);transform:translateY(-1px);}
+.nav-tabs .nav-item.active::after{content:'';position:absolute;bottom:0;left:50%;width:16px;height:3px;margin-left:-8px;border-radius:3px;background:linear-gradient(90deg,var(--gold),var(--gold2));}
+.nav-tabs .nav-item .nbadge{top:2px;right:calc(50% - 26px);border:2px solid #fff;}
+.gbadge{position:absolute;top:1px;right:calc(50% - 27px);background:var(--red);color:#fff;font-size:9px;font-weight:700;border-radius:9px;min-width:17px;padding:1px 5px;border:2px solid #fff;text-align:center;line-height:1.3;}
+.nav-sub{display:flex;gap:8px;overflow-x:auto;padding:10px 12px 12px;background:linear-gradient(180deg,#f4faf6,#e8f3ec);border-top:1px solid #dcebe2;scrollbar-width:none;animation:navIn .24s var(--ease);}
+.nav-sub[hidden]{display:none;}
+.nav-tabs .ntab-sub{flex:0 0 auto;display:inline-flex;flex-direction:row;align-items:center;gap:7px;padding:8px 15px;border-radius:999px;background:#fff;border:1px solid #d9e6de;color:#2c4637;font-family:'Outfit',sans-serif;font-size:12.5px;font-weight:600;letter-spacing:.2px;white-space:nowrap;cursor:pointer;position:relative;box-shadow:0 1px 3px rgba(10,61,31,.07);transition:transform .18s var(--ease),box-shadow .2s var(--ease),background .2s var(--ease),color .2s,border-color .2s;}
+.nav-tabs .ntab-sub .tico{font-size:14px;}
+.nav-tabs .ntab-sub:hover{transform:translateY(-1px);border-color:var(--g3);box-shadow:0 6px 14px rgba(26,107,60,.14);}
+.nav-tabs .ntab-sub:active{transform:scale(.97);}
+.nav-tabs .ntab-sub.active{background:linear-gradient(135deg,var(--g1),var(--g2) 60%,var(--g3));color:#fff;border-color:transparent;box-shadow:0 7px 16px rgba(26,107,60,.36);}
+.nav-tabs .ntab-sub .nbadge{position:static;margin-left:2px;border:none;}
+.nav-tabs button:focus-visible{outline:none;box-shadow:var(--ring);}
+@keyframes navIn{from{opacity:0;transform:translateY(-5px);}to{opacity:1;transform:none;}}
+/* buttons */
+.btn{border-radius:10px;letter-spacing:.2px;position:relative;transition:transform .16s var(--ease),box-shadow .22s var(--ease),background .2s,border-color .2s,color .2s,filter .2s;}
+.btn:active{transform:translateY(1px) scale(.985);}
+.btn:focus-visible{outline:none;box-shadow:var(--ring);}
+.btn:disabled{opacity:.55;cursor:not-allowed;transform:none;box-shadow:none;}
+.btn-primary{background:linear-gradient(135deg,var(--g1) 0%,var(--g2) 55%,var(--g3) 100%);box-shadow:0 6px 16px rgba(26,107,60,.28),inset 0 1px 0 rgba(255,255,255,.18);}
+.btn-primary:hover{background:linear-gradient(135deg,var(--g2),var(--g3) 70%,var(--g4));transform:translateY(-1px);box-shadow:0 10px 22px rgba(26,107,60,.34),inset 0 1px 0 rgba(255,255,255,.22);}
+.btn-gold{background:linear-gradient(135deg,var(--gold),var(--gold2));box-shadow:0 6px 16px rgba(200,134,10,.28),inset 0 1px 0 rgba(255,255,255,.25);}
+.btn-gold:hover{background:linear-gradient(135deg,var(--gold2),#ffc23d);transform:translateY(-1px);}
+.btn-outline{background:#fff;border:1.5px solid #d6e3db;color:#1f3a2b;box-shadow:0 1px 2px rgba(0,0,0,.04);}
+.btn-outline:hover{background:var(--g5);border-color:var(--g3);color:var(--g1);transform:translateY(-1px);box-shadow:0 5px 12px rgba(26,107,60,.12);}
+.btn-danger{background:linear-gradient(135deg,#a93226,var(--red) 60%,#e0584a);box-shadow:0 6px 16px rgba(192,57,43,.26);}
+.btn-danger:hover{opacity:1;filter:brightness(1.06);transform:translateY(-1px);}
+.btn-xs,.btn-sm{box-shadow:none;}
+.btn-xs.btn-outline,.btn-sm.btn-outline{box-shadow:0 1px 2px rgba(0,0,0,.04);}
+.tbtn{width:36px;height:36px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;padding:0;transition:background .2s,opacity .2s,transform .15s;}
+.tbtn:hover{background:rgba(255,255,255,.14);}
+.tbtn:active{transform:scale(.92);}
+.ditem{transition:background .15s,padding-left .15s;}
+.ditem:hover{background:linear-gradient(90deg,var(--g5),#fff);padding-left:18px;}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;}}
+</style>
+
 </head>
 <body>
 
@@ -1028,12 +1078,7 @@ function buildNav() {
 
   tabs.push({id:'settings',icon:'⚙️',label:'Settings'});
 
-  document.getElementById('nav-tabs').innerHTML = tabs.map(function(t){
-    return '<button class="ntab" id="tab-'+t.id+'" onclick="showTab(\''+t.id+'\')">'
-      +'<span class="tico">'+t.icon+'</span>'+t.label
-      +(t.badge?'<span class="nbadge" id="approval-badge" style="display:none">0</span>':'')
-      +'</button>';
-  }).join('');
+  _renderNav(tabs);
 }
 
 function showTab(id) {
@@ -2854,7 +2899,7 @@ function renderLedger() {
   var el = document.getElementById('page-ledger');
   if (!el) return;
   var r = currentUser.role;
-  var myClasses = (r === 'admin' ? DB.classes : (currentUser.classes||[])).slice().sort();
+  var myClasses = (r === 'admin' ? DB.classes : (currentUser.classes||[])).slice().sort(classCmp);
   if (!ledgerSelectedClass || !myClasses.includes(ledgerSelectedClass)) {
     ledgerSelectedClass = myClasses[0] || '';
   }
@@ -3142,7 +3187,7 @@ function exportLedgerAll() {
   var etAmt = DB.paySettings.etAmount || 500;
   var headers = ['Student', 'Class', 'Form', 'Total Paid (GHS)'].concat(purposes).concat(['Status']);
   var rows = [headers];
-  var classes = DB.classes.slice().sort();
+  var classes = DB.classes.slice().sort(classCmp);
   classes.forEach(function(cls) {
     var regSA = DB.students.filter(function(s){ return s.class===cls; });
     var payNamesA = DB.payments.filter(function(p){ return p.class===cls; }).map(function(p){ return p.student; });
@@ -4714,7 +4759,7 @@ function renderViewerReports() {
 
     // ── 3. Collections by Class & Purpose — bar chart + table
     var classTotals = [];
-    DB.classes.slice().sort().forEach(function(cls) {
+    DB.classes.slice().sort(classCmp).forEach(function(cls) {
       var clsPays = confirmedPays.filter(function(p){ return p.class===cls; });
       if (!clsPays.length) return;
       var clsIds = clsPays.map(function(p){ return p.id; });
@@ -5049,7 +5094,7 @@ function renderViewerPayments() {
 
     // Per-class breakdown — only show amounts for permitted purposes, no full class total
     html += '<div class="card"><div class="ctitle"><span class="tic">&#127979;</span>By Class</div>';
-    var classes = DB.classes.slice().sort();
+    var classes = DB.classes.slice().sort(classCmp);
     classes.forEach(function(cls) {
       var clsPays = confirmedPays.filter(function(p){ return p.class===cls; });
       if (!clsPays.length) return;
@@ -5107,10 +5152,10 @@ function renderViewerLedger() {
     return;
   }
 
-  if (!ledgerSelectedClass || !DB.classes.includes(ledgerSelectedClass)) ledgerSelectedClass = DB.classes.slice().sort()[0] || '';
+  if (!ledgerSelectedClass || !DB.classes.includes(ledgerSelectedClass)) ledgerSelectedClass = DB.classes.slice().sort(classCmp)[0] || '';
 
   // Class pills
-  var pills = DB.classes.slice().sort().map(function(cls) {
+  var pills = DB.classes.slice().sort(classCmp).map(function(cls) {
     var isSelected = cls === ledgerSelectedClass;
     var roster = DB.students.filter(function(s){ return s.class===cls; });
     var unpaid = roster.filter(function(s){
@@ -6304,7 +6349,7 @@ function _clsList() {
 }
 function lessonClasses(form) {
   var body = document.getElementById('lsn-body'); _clsForm = form || _clsForm; TT.classMap = TT.classMap || {};
-  var codes = DB.classes.slice().sort(), pref = {};
+  var codes = DB.classes.slice().sort(classCmp), pref = {};
   DB.users.forEach(function(u) { (u.permissions || []).forEach(function(p) { if (String(p).indexOf('ttclass:') === 0) pref[String(p).slice(8)] = u.username; }); });
   body.innerHTML = '<div class="fbar">' + ['1', '2', '3'].map(function(f) { return '<button class="btn btn-xs ' + (f === _clsForm ? 'btn-primary' : 'btn-outline') + '" onclick="lessonClasses(\'' + f + '\')">SHS' + f + '</button>'; }).join('')
     + '<button class="btn btn-xs btn-primary" onclick="saveClassMap(true)">Save matching</button><button class="btn btn-xs btn-outline" onclick="createPrefects()">Create missing class prefects</button><button class="btn btn-xs btn-outline" onclick="tidyClasses()">Make class lists match</button></div>'
@@ -6962,7 +7007,7 @@ function classListDiff() {
   TT.classes.forEach(function(c) { if (act[c.id]) { var code = (TT.classMap && TT.classMap[c.id]) || _autoCode(c.n); if (code) want[code] = 1; } });
   DB.students.forEach(function(st) { if (st.class && st.status !== 'graduated') want[st.class] = 1; });
   var have = {}; DB.classes.forEach(function(c) { have[c] = 1; });
-  return { want: Object.keys(want).sort(), stale: DB.classes.filter(function(c) { return !want[c]; }), missing: Object.keys(want).filter(function(c) { return !have[c]; }) };
+  return { want: Object.keys(want).sort(classCmp), stale: DB.classes.filter(function(c) { return !want[c]; }), missing: Object.keys(want).filter(function(c) { return !have[c]; }) };
 }
 function classSyncBanner() {
   if (!currentUser || currentUser.role !== 'admin') return '';
@@ -6981,7 +7026,7 @@ function syncClassesFromTimetable() {
     try { await _saveTimetable(TT); } catch (e) { showToast(e.message, 'error'); return; }
     var next = {}; d.want.forEach(function(c) { next[c] = 1; });
     Object.keys(TT.classJoin || {}).forEach(function(k) { (TT.classJoin[k] || []).forEach(function(c) { next[c] = 1; }); });
-    DB.classes = Object.keys(next).sort(); await saveDB();
+    DB.classes = Object.keys(next).sort(classCmp); await saveDB();
     audit('SYNC_CLASSES', DB.classes.length + ' classes from timetable', 'settings');
     showToast('Class list now matches the timetable', 'success');
     if (typeof renderLedger === 'function' && document.getElementById('page-ledger')) renderLedger();
@@ -7147,7 +7192,7 @@ function _promoPlan() {
     var ay = parseInt(x.admissionYear, 10);
     if (startY && ay >= 2000 && ay <= startY && (startY - ay + 1) !== d) mismatch.push({ s: x, expected: startY - ay + 1, digit: d });
   });
-  var rows = Object.keys(byClass).sort().map(function(c) {
+  var rows = Object.keys(byClass).sort(classCmp).map(function(c) {
     var g = byClass[c], grad = g.digit >= 3, nc = grad ? '' : ((st.over && st.over[c]) || _bumpClass(c));
     return { cls: c, digit: g.digit, n: g.students.length, grad: grad, newCls: nc, stay: g.students.filter(function(x) { return st.keep[x.id]; }).length,
       flag: (!grad && tt && !tt[nc]) ? 'not in this timetable' : '' };
@@ -7275,7 +7320,7 @@ async function runCloseYear() {
   var rests = {}; DB.classes.concat(DB.students.map(function(x) { return x.class; })).forEach(function(c) { var m = String(c || '').match(/^\s*\d(.+)$/); if (m) rests[m[1]] = 1; });
   var nextClasses = {}; DB.students.forEach(function(x) { if ((x.status || 'active') === 'active' && x.class) nextClasses[x.class] = 1; });
   Object.keys(rests).forEach(function(r) { nextClasses['1' + r] = 1; });
-  DB.classes = Object.keys(nextClasses).sort();
+  DB.classes = Object.keys(nextClasses).sort(classCmp);
   // 5. new year
   var newYear = { id: uid(), name: st.newYear, active: true, whatsappLink: '', admissionItems: getActiveYear() ? (getActiveYear().admissionItems || []).slice() : [] };
   DB.years.forEach(function(y) { y.active = false; }); DB.years.push(newYear); DB.settings.activeYear = st.newYear;
@@ -7427,7 +7472,7 @@ function renderStaffReports() {
     + '<div class="fbar" style="flex-wrap:wrap"><button class="btn btn-xs btn-outline" onclick="srRange(\'week\')">This week</button><button class="btn btn-xs btn-outline" onclick="srRange(\'month\')">This month</button><button class="btn btn-xs btn-outline" onclick="srRange(\'year\')">This year</button>'
     + '<input type="date" value="' + _x(f.from) + '" onchange="srSet(\'from\',this.value)"><input type="date" value="' + _x(f.to) + '" onchange="srSet(\'to\',this.value)"></div>'
     + '<div class="fbar" style="flex-wrap:wrap"><select onchange="srSet(\'type\',this.value)"><option value="all"' + (f.type === 'all' ? ' selected' : '') + '>Normal + Extended</option><option value="normal"' + (f.type === 'normal' ? ' selected' : '') + '>Normal classes only</option><option value="extended"' + (f.type === 'extended' ? ' selected' : '') + '>Extended Teaching only</option></select>'
-    + sel('cls', f.cls, DB.classes.slice().sort(), 'All classes') + sel('teacher', f.teacher, DB.teachers.slice().sort(), 'All teachers')
+    + sel('cls', f.cls, DB.classes.slice().sort(classCmp), 'All classes') + sel('teacher', f.teacher, DB.teachers.slice().sort(), 'All teachers')
     + '<label style="font-size:12px;display:flex;align-items:center;gap:4px"><input type="checkbox"' + (f.pending ? ' checked' : '') + ' onchange="srSet(\'pending\',this.checked)"> include pending</label></div>'
     + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0">' + card(tot, 'sessions') + card(tot ? Math.round(ok / tot * 100) + '%' : '-', 'on time', 'var(--g2)') + card(late, 'late', 'var(--gold)') + card(abs, 'absent', 'var(--red)') + card(nN, 'normal') + card(nE, 'extended') + '</div>'
     + (tot ? '<div class="chart-wrap tall"><canvas id="chart-sr-teach"></canvas></div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-top:12px"><div class="chart-wrap"><canvas id="chart-sr-week"></canvas></div><div class="chart-wrap"><canvas id="chart-sr-split"></canvas></div></div>'
@@ -9850,7 +9895,7 @@ function downloadStudentTemplate() {
     ['3. FORM and ADMISSION YEAR can be left blank. They are worked out from the class and the current academic year.'],
     ['4. Phone numbers: 0241234567 or +233241234567 both work.'], ['5. Dates: YYYY-MM-DD (for example 2009-05-12).'],
     ['6. You can import again later with extra details. Students already in the system keep what they have, and only blank details are filled in.'],
-    ['7. The system shows you a check screen before anything is saved.'], [''], ['VALID CLASSES (use one of these)'], [DB.classes.length ? DB.classes.slice().sort().join(', ') : '(No classes yet. Import the timetable first, then use "Use timetable classes everywhere".)'],
+    ['7. The system shows you a check screen before anything is saved.'], [''], ['VALID CLASSES (use one of these)'], [DB.classes.length ? DB.classes.slice().sort(classCmp).join(', ') : '(No classes yet. Import the timetable first, then use "Use timetable classes everywhere".)'],
     [''], ['HOUSES'], [houses.join(', ')], [''], ['PROGRAMMES'], [progs.join(', ')]];
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(info), 'Read me');
   XLSX.writeFile(wb, 'ASMaP_Student_Import_Template.xlsx');
@@ -10437,6 +10482,89 @@ function _addPracticeCard() {
   renderSettings = function() { var r = orig.apply(this, arguments); try { _addPracticeCard(); } catch (e) {} return r; };
 })();
 
+
+// ===================== CLASS ORDER: Form 3 first, then 2, then 1 =====================
+function classCmp(a, b) {
+  var fa = (String(a).match(/^\s*(\d)/) || [0, 0])[1], fb = (String(b).match(/^\s*(\d)/) || [0, 0])[1];
+  if (fa !== fb) return Number(fb) - Number(fa);
+  return String(a).localeCompare(String(b), undefined, { numeric: true });
+}
+function _sortClasses() {
+  try {
+    if (DB && Array.isArray(DB.classes)) DB.classes.sort(classCmp);
+    if (DB && Array.isArray(DB.users)) DB.users.forEach(function(u) { if (Array.isArray(u.classes)) u.classes.sort(classCmp); });
+    if (currentUser && Array.isArray(currentUser.classes)) currentUser.classes.sort(classCmp);
+  } catch (e) {}
+}
+(function() {
+  ['renderPage', 'openModal', 'renderManage', 'renderSettings'].forEach(function(fn) {
+    var o = window[fn]; if (typeof o !== 'function') return;
+    window[fn] = function() { _sortClasses(); return o.apply(this, arguments); };
+  });
+})();
+// ===================== end class order =====================
+
+// ===================== GROUPED MENU (admin and any role with many tabs) =====================
+var _NAV_GROUPS = [
+  { k: 'daily',     icon: '\uD83D\uDDD3\uFE0F', label: 'Daily',     ids: ['attendance', 'payments', 'ledger', 'approvals'] },
+  { k: 'academics', icon: '\uD83D\uDCDA',        label: 'Academics', ids: ['scores', 'behaviour', 'lessons', 'prefect'] },
+  { k: 'reports',   icon: '\uD83D\uDCC8',        label: 'Reports',   ids: ['reports', 'treports'] },
+  { k: 'people',    icon: '\uD83D\uDC64',        label: 'People',    ids: ['manage', 'admission', 'pta', 'sms'] },
+  { k: 'system',    icon: '\uD83D\uDEE0\uFE0F', label: 'System',    ids: ['audit', 'settings'] }
+];
+var _navGroupIds = {}, _navLast = {};
+function _renderNav(tabs) {
+  var el = document.getElementById('nav-tabs'); if (!el) return;
+  var byId = {}; tabs.forEach(function(t) { byId[t.id] = t; });
+  function tabBtn(t, cls, grp) {
+    return '<button class="ntab ' + cls + '" id="tab-' + t.id + '" data-group="' + (grp || '') + '" onclick="showTab(\'' + t.id + '\')">'
+      + '<span class="tico">' + t.icon + '</span><span class="tlbl">' + t.label + '</span>'
+      + (t.badge ? '<span class="nbadge" id="approval-badge" style="display:none">0</span>' : '') + '</button>';
+  }
+  _navGroupIds = {};
+  if (tabs.length <= 6) {   // few tabs: keep the simple single row
+    el.className = 'nav-tabs nav-flat';
+    el.innerHTML = '<div class="nav-main">' + tabs.map(function(t) { return tabBtn(t, 'nav-item', ''); }).join('') + '</div>';
+    return;
+  }
+  var used = {}, main = [], subs = [];
+  if (byId.dashboard) { main.push(tabBtn(byId.dashboard, 'nav-item', '')); used.dashboard = 1; }
+  _NAV_GROUPS.forEach(function(g) {
+    var avail = g.ids.filter(function(id) { return byId[id]; });
+    avail.forEach(function(id) { used[id] = 1; });
+    if (!avail.length) return;
+    if (avail.length === 1) { main.push(tabBtn(byId[avail[0]], 'nav-item', '')); return; }
+    _navGroupIds[g.k] = avail;
+    main.push('<button class="ngroup nav-item" id="grp-' + g.k + '" data-k="' + g.k + '" onclick="navGroup(\'' + g.k + '\')">'
+      + '<span class="tico">' + g.icon + '</span><span class="tlbl">' + g.label + '</span>'
+      + (g.k === 'daily' ? '<span class="gbadge" id="gbadge-daily" style="display:none">0</span>' : '') + '</button>');
+    subs.push('<div class="nav-sub" data-sub="' + g.k + '" hidden>' + avail.map(function(id) { return tabBtn(byId[id], 'ntab-sub', g.k); }).join('') + '</div>');
+  });
+  tabs.forEach(function(t) { if (!used[t.id]) main.push(tabBtn(t, 'nav-item', '')); });   // any tab not in a group stays visible
+  el.className = 'nav-tabs nav-grouped';
+  el.innerHTML = '<div class="nav-main">' + main.join('') + '</div>' + subs.join('');
+}
+function navGroup(k) { var ids = _navGroupIds[k]; if (!ids) return; showTab(_navLast[k] || ids[0]); }
+function _syncNav(id) {
+  var t = document.getElementById('tab-' + id), g = t ? (t.getAttribute('data-group') || '') : '';
+  document.querySelectorAll('.ngroup').forEach(function(b) { b.classList.toggle('active', b.getAttribute('data-k') === g); });
+  document.querySelectorAll('.nav-sub').forEach(function(s) { s.hidden = s.getAttribute('data-sub') !== g; });
+  if (g) {
+    _navLast[g] = id;
+    var sub = t.parentNode; if (sub && sub.scrollTo) sub.scrollTo({ left: Math.max(0, t.offsetLeft - (sub.clientWidth - t.offsetWidth) / 2), behavior: 'smooth' });
+  }
+}
+(function() {
+  var st = window.showTab;
+  if (typeof st === 'function') window.showTab = function(id) { var r = st.apply(this, arguments); try { _syncNav(id); } catch (e) {} return r; };
+  var ub = window.updateApprovalBadge;
+  if (typeof ub === 'function') window.updateApprovalBadge = function() {
+    var r = ub.apply(this, arguments);
+    try { var a = document.getElementById('approval-badge'), b = document.getElementById('gbadge-daily'); if (a && b) { b.textContent = a.textContent; b.style.display = a.style.display; } } catch (e) {}
+    return r;
+  };
+})();
+// ===================== end grouped menu =====================
 </script>
 </body>
 </html>
