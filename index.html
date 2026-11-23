@@ -421,7 +421,7 @@ input[type=text]:focus,input[type=number]:focus,input[type=date]:focus,input[typ
       <input type="password" id="lp" placeholder="Enter password" autocomplete="current-password">
     </div>
     <button class="btn btn-primary" onclick="doLogin()">Sign In →</button>
-    <p style="text-align:center;font-size:11px;color:var(--textm);margin-top:14px;">Adombra School Management &amp; Analytics Platform · v1.0 · build 17Nov-a</p>
+    <p style="text-align:center;font-size:11px;color:var(--textm);margin-top:14px;">Adombra School Management &amp; Analytics Platform · v1.0 · build 12Nov-a</p>
     <div id="conn-result" style="margin-top:8px;font-size:12px;text-align:center;display:none"></div>
   </div>
 </div>
@@ -2336,7 +2336,7 @@ function renderManage() {
 
     <div class="card">
       <div class="ctitle"><span class="tic">👤</span>Users (${DB.users.length})
-        <button class="btn btn-primary btn-sm" style="margin-left:auto" onclick="openAddUser()">+ Add</button>
+        <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="openBulkUsers()">&#128229; Bulk add</button> <button class="btn btn-primary btn-sm" onclick="openAddUser()">+ Add</button>
       </div>
       <div class="twrap"><table>
         <tr><th>Name</th><th>Username</th><th>Role</th><th>Classes</th><th></th></tr>
@@ -2441,11 +2441,11 @@ function downloadTemplate(type) {
   let rows, filename;
   if (type === 'teacher') {
     rows = [
-      ['Full Name'],
-      ['WILLIAM ATO SEKUM'],
-      ['BENEDICTA EFUA ARTHUR'],
-      ['MARTHA DONKOR'],
-      ['(continue adding teacher names in column A...)'],
+      ['Full Name','Phone','Email','Department','Staff ID','Notes'],
+      ['WILLIAM ATO SEKUM','0241234567','william@example.com','GENERAL SCIENCE','',''],
+      ['BENEDICTA EFUA ARTHUR','0551234567','','BUSINESS','',''],
+      ['MARTHA DONKOR','','','','',''],
+      ['(Name in A is required. Phone, Email, Department, Staff ID and Notes are optional. Re-uploading fills blanks only.)','','','','',''],
     ];
     filename = 'ASMaP_Teacher_Import_Template';
   } else if (type === 'subject') {
@@ -3826,13 +3826,22 @@ function handleImport(evt, type) {
       var added = 0, fuzzyFixed = 0;
 
       if (type === 'teacher') {
+        var detailsFilled = 0, badPhones = 0;
+        DB.settings.teacherInfo = DB.settings.teacherInfo || {};
         rows.slice(1).forEach(function(row){
-          var val = (row[0]||'').toString().trim().toUpperCase();
+          var val = (row[0]||'').toString().replace(/\s+/g,' ').trim().toUpperCase();
           if (!val || val.startsWith('(')) return;
           if (!DB.teachers.includes(val)) { DB.teachers.push(val); added++; }
+          var g = function(i){ return (row[i]==null ? '' : String(row[i])).trim(); };
+          var ph = g(1) ? _normPhone(g(1)) : { v:'', bad:false };
+          if (ph.bad) badPhones++;
+          var incoming = { phone: ph.v, email: g(2), dept: g(3), staffId: g(4), notes: g(5) };
+          var cur = DB.settings.teacherInfo[val] || {}, filled = false;
+          Object.keys(incoming).forEach(function(k){ if (incoming[k] && !cur[k]) { cur[k] = incoming[k]; filled = true; } });
+          if (filled) { DB.settings.teacherInfo[val] = cur; detailsFilled++; }
         });
         await saveDB();
-        showToast('Imported ' + added + ' teachers ✓', 'success');
+        showToast('Imported ' + added + ' new teachers; details filled for ' + detailsFilled + (badPhones ? ' (' + badPhones + ' phone numbers look wrong)' : '') + ' ✓', 'success');
 
       } else if (type === 'subject') {
         rows.slice(1).forEach(function(row){
@@ -5546,7 +5555,7 @@ function renderSettings() {
         + '</td></tr>';
     }).join('');
     html += '<div class="card"><div class="ctitle"><span class="tic">&#128100;</span>Users ('+DB.users.length+')'
-      + '<button class="btn btn-primary btn-sm" style="margin-left:auto" onclick="openAddUser()">+ Add User</button></div>'
+      + '<button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="openBulkUsers()">&#128229; Bulk add</button> <button class="btn btn-primary btn-sm" onclick="openAddUser()">+ Add User</button></div>'
       + '<div class="twrap"><table><tr><th>Name</th><th>Username</th><th>Role</th><th>Classes</th><th></th></tr>'
       + userRows + '</table></div></div>';
 
@@ -5671,7 +5680,7 @@ function renderSettings() {
 
   // App info
   html += '<div style="text-align:center;padding:16px;color:var(--textm);font-size:11px">'
-    + 'ASMaP \u00b7 Adombra School Management &amp; Analytics Platform \u00b7 v1.0 · build 17Nov-a<br>'
+    + 'ASMaP \u00b7 Adombra School Management &amp; Analytics Platform \u00b7 v1.0 · build 12Nov-a<br>'
     + s.schoolName + ' \u00b7 ' + s.schoolLocation + '</div>';
 
   el.innerHTML = html;
@@ -10612,6 +10621,190 @@ function _syncNav(id) {
   };
 })();
 // ===================== end grouped menu =====================
+
+// ===================== BULK USERS + TEACHER DETAILS =====================
+var _BU_ROLES = [
+  ['Coordinator', 'coordinator'], ['Supervisor', 'supervisor'], ['HOD', 'hod'], ['Critical Friend', 'critical_friend'],
+  ['Form Master/Mistress', 'form_master'], ['House Master/Mistress', 'house_master'], ['Senior House Master/Mistress', 'sr_house_master'],
+  ['Class Prefect', 'class_prefect'], ['PTA Prefect', 'pta_prefect'], ['PTA Executive', 'pta_executive']
+];
+var _BU_SINGLE = ['class_prefect', 'pta_prefect', 'form_master'], _BU_MULTI = ['coordinator', 'supervisor'], _BU_HOUSE = ['house_master', 'sr_house_master'];
+function _buPw() {
+  var L = 'abcdefghjkmnpqrstuvwxyz', D = '23456789', all = L + D, o = '';
+  for (var i = 0; i < 8; i++) o += all.charAt(Math.floor(Math.random() * all.length));
+  return o + L.charAt(Math.floor(Math.random() * L.length)) + D.charAt(Math.floor(Math.random() * D.length));   // 10 characters, always letters + digits
+}
+function _buLoadExcelJS() {
+  return new Promise(function(res, rej) {
+    if (window.ExcelJS) return res();
+    var s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js';
+    s.onload = function() { window.ExcelJS ? res() : rej(new Error('ExcelJS missing')); }; s.onerror = function() { rej(new Error('could not load ExcelJS')); };
+    document.head.appendChild(s);
+  });
+}
+function openBulkUsers() {
+  var have = {}; DB.users.forEach(function(u) { have[String(u.name || '').toUpperCase()] = 1; });
+  var noLogin = (DB.teachers || []).filter(function(t) { return !have[t]; }).length;
+  openModal('Bulk add users',
+    '<p style="font-size:12px;color:var(--textm);margin-bottom:12px">1. Download the template (dropdowns are built from your system). 2. Fill it in. 3. Upload it, check the preview, then create the users. Each person gets a random temporary password and must change it at first sign-in.</p>'
+    + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">'
+    + '<button class="btn btn-outline btn-sm" onclick="downloadBulkUserTemplate(false)">&#11015; Blank template</button>'
+    + '<button class="btn btn-outline btn-sm" onclick="downloadBulkUserTemplate(true)">&#11015; Teachers without a login (' + noLogin + ')</button></div>'
+    + '<div class="fgrp"><label>UPLOAD FILLED TEMPLATE</label><input type="file" accept=".xlsx,.xls,.csv" onchange="handleBulkUsersFile(event)"></div>'
+    + '<div style="font-size:11px;color:var(--textm)">Superintendent and Admin accounts are not created here (they need permission choices); add those one at a time.</div>');
+}
+async function downloadBulkUserTemplate(prefill) {
+  var teachers = (DB.teachers || []).slice().sort(), have = {}, info = (DB.settings && DB.settings.teacherInfo) || {};
+  DB.users.forEach(function(u) { have[String(u.name || '').toUpperCase()] = 1; });
+  var pre = prefill ? teachers.filter(function(t) { return !have[t]; }) : [];
+  var classes = DB.classes.slice().sort(classCmp), houses = getHouses(), progs = getProgrammes(), roles = _BU_ROLES.map(function(r) { return r[0]; });
+  var head = ['Full Name', 'Phone', 'Role', 'Classes (comma-separate for several)', 'House', 'Department / Programme', 'Username (optional)'];
+  var help = ['HOW TO FILL', '', 'Full Name: pick from the list or type a new name. Phone: Ghana number, e.g. 0241234567 (needed to send the login by SMS).',
+    'Role: pick from the list. Classes: coordinators and supervisors can have several, separated by commas; prefects and form masters need exactly one.',
+    'House: only for house masters. Department: for HODs. Username: leave blank and one is made from the name (first.last).', 'Do not change the column order or the first row.'];
+  try {
+    await _buLoadExcelJS();
+    var wb = new ExcelJS.Workbook(), ws = wb.addWorksheet('Users'), ls = wb.addWorksheet('Lists'), hs = wb.addWorksheet('How to fill');
+    var lists = [teachers, roles, classes, houses, progs], hd = ['Teachers', 'Roles', 'Classes', 'Houses', 'Programmes'];
+    hd.forEach(function(h, i) { ls.getCell(1, i + 1).value = h; lists[i].forEach(function(v, j) { ls.getCell(j + 2, i + 1).value = v; }); ls.getColumn(i + 1).width = 28; });
+    ls.state = 'hidden';
+    help.forEach(function(t, i) { hs.getCell(i + 1, 1).value = t; }); hs.getColumn(1).width = 130; hs.getCell(1, 1).font = { bold: true };
+    head.forEach(function(h, i) { var c = ws.getCell(1, i + 1); c.value = h; c.font = { bold: true, color: { argb: 'FFFFFFFF' } }; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1A6B3C' } }; c.alignment = { vertical: 'middle', wrapText: true }; });
+    [30, 16, 26, 30, 16, 26, 20].forEach(function(w, i) { ws.getColumn(i + 1).width = w; });
+    ws.getColumn(2).numFmt = '@'; ws.views = [{ state: 'frozen', ySplit: 1 }]; ws.getRow(1).height = 32;
+    pre.forEach(function(t, i) { ws.getCell(i + 2, 1).value = t; var ph = (info[t] || {}).phone; if (ph) ws.getCell(i + 2, 2).value = ph; });
+    var rng = function(col, n) { return 'Lists!$' + col + '$2:$' + col + '$' + Math.max(n, 1) + (n < 1 ? '' : ''); };
+    var last = Math.max(400, pre.length + 50);
+    for (var r = 2; r <= last; r++) {
+      ws.getCell('A' + r).dataValidation = { type: 'list', allowBlank: true, formulae: ['Lists!$A$2:$A$' + (teachers.length + 1)], showErrorMessage: false };
+      ws.getCell('C' + r).dataValidation = { type: 'list', allowBlank: true, formulae: ['Lists!$B$2:$B$' + (roles.length + 1)], showErrorMessage: true, errorStyle: 'stop', errorTitle: 'Role', error: 'Pick a role from the list' };
+      ws.getCell('D' + r).dataValidation = { type: 'list', allowBlank: true, formulae: ['Lists!$C$2:$C$' + (classes.length + 1)], showErrorMessage: false };
+      ws.getCell('E' + r).dataValidation = { type: 'list', allowBlank: true, formulae: ['Lists!$D$2:$D$' + (houses.length + 1)], showErrorMessage: false };
+      ws.getCell('F' + r).dataValidation = { type: 'list', allowBlank: true, formulae: ['Lists!$E$2:$E$' + (progs.length + 1)], showErrorMessage: false };
+    }
+    var buf = await wb.xlsx.writeBuffer(), a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+    a.download = 'ASMaP_Bulk_Users_Template.xlsx'; document.body.appendChild(a); a.click(); a.remove();
+    showToast('Template downloaded with dropdowns ✓', 'success');
+  } catch (e) {
+    var wb2 = XLSX.utils.book_new(), rows = [head].concat(pre.map(function(t) { return [t, (info[t] || {}).phone || '', '', '', '', '', '']; }));
+    XLSX.utils.book_append_sheet(wb2, XLSX.utils.aoa_to_sheet(rows), 'Users');
+    XLSX.utils.book_append_sheet(wb2, XLSX.utils.aoa_to_sheet([['Roles'].concat(roles)].concat([['Classes'].concat(classes)], [['Houses'].concat(houses)], [['Programmes'].concat(progs)])), 'Lists');
+    XLSX.writeFile(wb2, 'ASMaP_Bulk_Users_Template.xlsx');
+    showToast('Template downloaded WITHOUT dropdowns (could not load the Excel add-on; check your internet). Valid values are on the Lists sheet.', 'warning');
+  }
+}
+function handleBulkUsersFile(evt) {
+  var file = evt.target.files[0]; if (!file) return; evt.target.value = '';
+  var rd = new FileReader();
+  rd.onload = function(e) {
+    try {
+      var wb = XLSX.read(e.target.result, { type: 'binary' }), ws = wb.Sheets['Users'] || wb.Sheets[wb.SheetNames[0]];
+      _buPreview(_buParse(XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' })));
+    } catch (ex) { showToast('Could not read that file: ' + ex.message, 'error'); }
+  };
+  rd.readAsBinaryString(file);
+}
+function _buParse(rows) {
+  var hdr = (rows[0] || []).map(function(h) { return String(h).toLowerCase(); });
+  var col = function(re, dflt) { var i = hdr.findIndex(function(h) { return re.test(h); }); return i >= 0 ? i : dflt; };
+  var cN = col(/name/, 0), cP = col(/phone/, 1), cR = col(/role/, 2), cC = col(/class/, 3), cH = col(/house/, 4), cD = col(/depart|programme/, 5), cU = col(/user/, 6);
+  var roleMap = {}; _BU_ROLES.forEach(function(r) { roleMap[r[0].toLowerCase()] = r[1]; roleMap[r[1]] = r[1]; });
+  var clsMap = {}; DB.classes.forEach(function(c) { clsMap[String(c).toUpperCase().replace(/\s+/g, '')] = c; });
+  var houseMap = {}; getHouses().forEach(function(h) { houseMap[String(h).toLowerCase()] = h; });
+  var taken = {}; DB.users.forEach(function(u) { taken[String(u.username || '').toLowerCase()] = 1; });
+  var existName = {}; DB.users.forEach(function(u) { existName[String(u.name || '').toUpperCase()] = 1; });
+  var info = (DB.settings && DB.settings.teacherInfo) || {}, out = [];
+  rows.slice(1).forEach(function(row, idx) {
+    var g = function(i) { return String(row[i] == null ? '' : row[i]).trim(); };
+    if (!g(cN) && !g(cR) && !g(cP)) return;
+    var e = { row: idx + 2, name: g(cN).replace(/\s+/g, ' ').toUpperCase(), roleKey: '', classes: [], house: '', dept: g(cD), username: g(cU).toLowerCase().replace(/[^a-z0-9._-]/g, ''), phone: '', errors: [], warns: [] };
+    if (!e.name) e.errors.push('Name missing');
+    var rk = roleMap[g(cR).toLowerCase()]; if (!rk) e.errors.push(g(cR) ? 'Unknown role "' + g(cR) + '"' : 'Role missing'); else e.roleKey = rk;
+    g(cC).split(/[,;\n]+/).forEach(function(c) {
+      c = c.trim(); if (!c) return; var k = clsMap[c.toUpperCase().replace(/\s+/g, '')];
+      if (!k) e.errors.push('Unknown class "' + c + '"'); else if (e.classes.indexOf(k) < 0) e.classes.push(k);
+    });
+    if (_BU_SINGLE.indexOf(rk) >= 0 && e.classes.length !== 1) e.errors.push('This role needs exactly one class');
+    if (_BU_MULTI.indexOf(rk) >= 0 && !e.classes.length) e.warns.push('No classes assigned yet');
+    if (_BU_HOUSE.indexOf(rk) >= 0) { var hh = houseMap[g(cH).toLowerCase()]; if (!hh) e.errors.push(g(cH) ? 'Unknown house "' + g(cH) + '"' : 'House missing'); else e.house = hh; }
+    if (rk === 'hod' && !e.dept) e.warns.push('No department');
+    var ph = g(cP) || (info[e.name] || {}).phone || '', np = _normPhone(ph);
+    if (!ph) e.warns.push('No phone: give the login by hand'); else if (np.bad) e.warns.push('Phone looks wrong: SMS will not be sent'); else e.phone = np.v;
+    if (existName[e.name]) e.warns.push('A login with this name already exists');
+    if (e.username) { if (e.username.length < 3) e.errors.push('Username too short'); else if (taken[e.username]) e.errors.push('Username "' + e.username + '" is taken'); }
+    else if (e.name) {
+      var t = e.name.toLowerCase().split(' ').map(function(x) { return x.replace(/[^a-z0-9]/g, ''); }).filter(Boolean);
+      var base = t.length > 1 ? t[0] + '.' + t[t.length - 1] : (t[0] || 'user'), u = base, n = 2;
+      while (taken[u]) u = base + (n++); e.username = u;
+    }
+    if (e.username && !e.errors.length) taken[e.username] = 1;
+    out.push(e);
+  });
+  return out;
+}
+function _buPreview(list) {
+  window._buRows = list;
+  var ok = list.filter(function(e) { return !e.errors.length; }), bad = list.length - ok.length;
+  if (!list.length) { showToast('No rows found in that file', 'warning'); return; }
+  var rows = list.map(function(e) {
+    var st = e.errors.length ? '<span class="badge bred">Skipped</span>' : e.warns.length ? '<span class="badge bgold">OK, check</span>' : '<span class="badge bg">OK</span>';
+    return '<tr><td>' + e.row + '</td><td><strong>' + _x(e.name) + '</strong><div style="font-size:10px;color:var(--textm)">' + _x(e.username) + ' · ' + _x(e.phone || 'no phone') + '</div></td><td>' + _x(e.roleKey) + (e.classes.length ? '<div style="font-size:10px;color:var(--textm)">' + _x(e.classes.join(', ')) + '</div>' : '') + '</td><td>' + st
+      + (e.errors.concat(e.warns).length ? '<div style="font-size:10px;color:' + (e.errors.length ? 'var(--red)' : 'var(--amber)') + '">' + _x(e.errors.concat(e.warns).join('; ')) + '</div>' : '') + '</td></tr>';
+  }).join('');
+  openModal('Check before creating', '<div style="font-size:12px;margin-bottom:10px"><strong>' + ok.length + '</strong> will be created' + (bad ? ', <strong style="color:var(--red)">' + bad + '</strong> skipped (fix them in the file and upload again)' : '') + '.</div>'
+    + '<div class="twrap" style="max-height:48vh;overflow:auto"><table><tr><th>Row</th><th>Person</th><th>Role</th><th>Status</th></tr>' + rows + '</table></div>'
+    + '<button class="btn btn-primary" style="width:100%;margin-top:12px" ' + (ok.length ? '' : 'disabled ') + 'onclick="createBulkUsers()">Create ' + ok.length + ' user' + (ok.length === 1 ? '' : 's') + '</button>');
+}
+async function createBulkUsers() {
+  var list = (window._buRows || []).filter(function(e) { return !e.errors.length; }); if (!list.length) return;
+  if (autoRefreshTimer) { clearInterval(autoRefreshTimer); autoRefreshTimer = null; }
+  openModal('Creating users…', '<div id="bu-prog" style="font-size:13px">0 / ' + list.length + '</div>');
+  var done = [], fail = [];
+  for (var i = 0; i < list.length; i++) {
+    var e = list[i], pw = _buPw(), id = uid();
+    try {
+      await callAdminUsers('create_user', { legacy_id: id, username: e.username, password: pw, role: e.roleKey, full_name: e.name, assigned_classes: e.classes, permissions: [], phone: e.phone, dept: e.dept, house: e.house, teacher_link: '' });
+      DB.users.push({ id: id, username: e.username, role: e.roleKey, name: e.name, classes: e.classes, active: true, permissions: [], phone: e.phone, dept: e.dept, house: e.house, teacherLink: '' });
+      done.push({ name: e.name, username: e.username, password: pw, phone: e.phone, role: e.roleKey, classes: e.classes.join(', ') });
+    } catch (ex) { fail.push(e.name + ': ' + ex.message); }
+    var p = document.getElementById('bu-prog'); if (p) p.textContent = (i + 1) + ' / ' + list.length;
+  }
+  window._buLogins = done; audit('BULK_ADD_USERS', done.length + ' users created', 'users');
+  _buResults(done, fail); try { renderSettings(); } catch (x) {}
+}
+function _buResults(done, fail) {
+  var withPhone = done.filter(function(d) { return d.phone; }).length;
+  openModal('Users created (passwords shown once)',
+    '<div style="font-size:12px;margin-bottom:10px"><strong>' + done.length + '</strong> created.' + (fail.length ? ' <strong style="color:var(--red)">Not created:</strong> ' + _x(fail.join(' | ')) : '') + ' Download the list now: the passwords cannot be viewed again.</div>'
+    + '<div class="twrap" style="max-height:40vh;overflow:auto"><table><tr><th>Name</th><th>Username</th><th>Password</th><th>Phone</th></tr>'
+    + done.map(function(d) { return '<tr><td>' + _x(d.name) + '</td><td>' + _x(d.username) + '</td><td style="font-family:monospace">' + _x(d.password) + '</td><td>' + _x(d.phone || '-') + '</td></tr>'; }).join('') + '</table></div>'
+    + '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><button class="btn btn-outline" onclick="downloadBulkLogins()">&#11015; Download logins</button>'
+    + '<button class="btn btn-primary" style="flex:1" ' + (withPhone ? '' : 'disabled ') + 'onclick="sendBulkLoginSMS()">&#128241; Send SMS to ' + withPhone + '</button></div><div id="bu-sms" style="font-size:12px;margin-top:8px"></div>');
+}
+function downloadBulkLogins() {
+  var wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet((window._buLogins || []).map(function(d) { return { Name: d.name, Username: d.username, 'Temporary password': d.password, Phone: d.phone, Role: d.role, Classes: d.classes }; })), 'Logins');
+  XLSX.writeFile(wb, 'ASMaP_new_user_logins.xlsx');
+}
+function sendBulkLoginSMS() {
+  var list = (window._buLogins || []).filter(function(d) { return d.phone; });
+  if (!list.length) return;
+  showConfirm('Send logins by SMS', 'Send ' + list.length + ' SMS now? Each one contains the person\'s username and temporary password and uses SMS credit.', async function() {
+    var el = document.getElementById('bu-sms'), sent = 0, failed = 0, site = location.origin;
+    for (var i = 0; i < list.length; i += 25) {
+      var chunk = list.slice(i, i + 25).map(function(d) {
+        return { to: d.phone.replace(/\D/g, ''), message: 'OSTECH ASMaP login\nUsername: ' + d.username + '\nPassword: ' + d.password + '\n' + site + '\nChange your password when you first sign in.' };
+      });
+      if (el) el.textContent = 'Sending ' + Math.min(i + 25, list.length) + ' / ' + list.length + '…';
+      var r = await asmapSMS({ bulk: chunk });
+      if (r && r.success !== false) { sent += (r.sent != null ? r.sent : chunk.length); failed += (r.failed || 0); } else failed += chunk.length;
+    }
+    if (el) el.innerHTML = '<strong>' + sent + '</strong> accepted' + (failed ? ', <strong style="color:var(--red)">' + failed + '</strong> failed' : '') + '.';
+    audit('BULK_LOGIN_SMS', sent + ' sent, ' + failed + ' failed', 'users');
+  }, 'Send', 'btn-primary');
+}
+// ===================== end bulk users =====================
 </script>
 </body>
 </html>
