@@ -6766,7 +6766,7 @@ function asmapSMS(payload) {
   // payload: {to, message} | {recipients:[], message} | {bulk:[{to,message}]}
   return fetch(SUPA_URL + '/functions/v1/send-sms', {
     method: 'POST',
-    headers: Object.assign({}, HDR, { 'Content-Type': 'application/json' }),
+    headers: (function() { var h = Object.assign({}, HDR, { 'Content-Type': 'application/json' }); delete h.Prefer; return h; })(),
     body: JSON.stringify(payload)
   }).then(function(r) {
     return r.json().catch(function() { return {}; }).then(function(data) {
@@ -7635,6 +7635,7 @@ function renderSMS() {
     + '<div style="display:flex;gap:8px;flex-wrap:wrap">'
     + '<button class="btn btn-outline btn-sm" onclick="smsPreview()">👁 Preview</button>'
     + '<button class="btn btn-primary" onclick="smsSend()" id="sms-send-btn">📤 Send SMS</button>'
+    + '<button class="btn btn-outline btn-sm" onclick="smsWhatsApp()">💬 WhatsApp (one by one)</button>'
     + '</div>'
     + '<div id="sms-recipient-count" style="font-size:12px;color:var(--textm);margin-top:8px"></div>'
     + '</div>';
@@ -10780,7 +10781,7 @@ function _buResults(done, fail) {
     + '<div class="twrap" style="max-height:40vh;overflow:auto"><table><tr><th>Name</th><th>Username</th><th>Password</th><th>Phone</th></tr>'
     + done.map(function(d) { return '<tr><td>' + _x(d.name) + '</td><td>' + _x(d.username) + '</td><td style="font-family:monospace">' + _x(d.password) + '</td><td>' + _x(d.phone || '-') + '</td></tr>'; }).join('') + '</table></div>'
     + '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><button class="btn btn-outline" onclick="downloadBulkLogins()">&#11015; Download logins</button>'
-    + '<button class="btn btn-primary" style="flex:1" ' + (withPhone ? '' : 'disabled ') + 'onclick="sendBulkLoginSMS()">&#128241; Send SMS to ' + withPhone + '</button></div><div id="bu-sms" style="font-size:12px;margin-top:8px"></div>');
+    + '<button class="btn btn-primary" style="flex:1" ' + (withPhone ? '' : 'disabled ') + 'onclick="sendBulkLoginSMS()">&#128241; Send SMS to ' + withPhone + '</button><button class="btn btn-outline" onclick="waLogins()">&#128172; WhatsApp</button></div><div id="bu-sms" style="font-size:12px;margin-top:8px"></div>');
 }
 function downloadBulkLogins() {
   var wb = XLSX.utils.book_new();
@@ -10860,6 +10861,44 @@ function resetAndSendLogins() {
   }, 'Reset', 'btn-primary');
 }
 // ===================== end send logins =====================
+
+// ===================== WHATSAPP (click to send, opens the WhatsApp app) =====================
+function waNumber(p) {
+  var d = String(p || '').replace(/\D/g, '');
+  if (d.length === 10 && d.charAt(0) === '0') d = '233' + d.slice(1);
+  return d;
+}
+function waLink(phone, text) { return 'https://wa.me/' + waNumber(phone) + '?text=' + encodeURIComponent(text); }
+function openWhatsAppQueue(items, title) {
+  items = items.filter(function(i) { return waNumber(i.phone).length >= 11; });
+  if (!items.length) { showToast('No valid phone numbers to message', 'warning'); return; }
+  var cap = 200, shown = items.slice(0, cap);
+  openModal(title || 'WhatsApp',
+    '<div style="font-size:12px;color:var(--textm);margin-bottom:10px">Tap <strong>WhatsApp</strong> on a row: it opens your installed WhatsApp (or WhatsApp Web on a computer) with the message ready. Press Send there, come back, and tap the next one. Nothing is sent automatically.</div>'
+    + (items.length > cap ? '<div style="font-size:12px;color:var(--amber);margin-bottom:8px">Showing the first ' + cap + ' of ' + items.length + '. For big groups use SMS.</div>' : '')
+    + '<div class="twrap" style="max-height:55vh;overflow:auto;padding:0 8px">'
+    + shown.map(function(i) {
+      return '<div style="display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--grayl)"><div style="flex:1;font-size:12px"><strong>' + _x(i.label || i.phone) + '</strong><br><span style="color:var(--textm);font-size:10px">' + _x(i.phone) + '</span></div>'
+        + '<a class="btn btn-xs btn-primary" style="text-decoration:none;white-space:nowrap" target="_blank" rel="noopener" href="' + waLink(i.phone, i.message) + '" onclick="this.textContent=\'✓ Opened\';this.style.opacity=.6">&#128172; WhatsApp</a></div>';
+    }).join('') + '</div>');
+}
+function waLogins() {
+  var site = location.origin;
+  openWhatsAppQueue((window._buLogins || []).map(function(d) {
+    return { label: d.name, phone: d.phone, message: 'OSTECH ASMaP login\nUsername: ' + d.username + '\nPassword: ' + d.password + '\n' + site + '\nPlease change your password when you first sign in.' };
+  }), 'Send logins on WhatsApp');
+}
+function smsWhatsApp() {
+  var msg = ((document.getElementById('sms-body') || {}).value || '').trim();
+  if (!msg) { showToast('Type the message first', 'warning'); return; }
+  var phones = getSmsRecipients() || [], names = {};
+  DB.students.forEach(function(s) { if (s.parentPhone) names[waNumber(s.parentPhone)] = (names[waNumber(s.parentPhone)] ? names[waNumber(s.parentPhone)] + ', ' : '') + s.name; });
+  var seen = {};
+  openWhatsAppQueue(phones.filter(function(p) { var k = waNumber(p); if (seen[k]) return false; seen[k] = 1; return true; }).map(function(p) {
+    return { label: names[waNumber(p)] ? 'Parent of ' + names[waNumber(p)] : p, phone: p, message: msg };
+  }), 'Send on WhatsApp');
+}
+// ===================== end whatsapp =====================
 </script>
 </body>
 </html>
