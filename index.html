@@ -10795,7 +10795,7 @@ function sendBulkLoginSMS() {
     var el = document.getElementById('bu-sms'), sent = 0, failed = 0, site = location.origin;
     for (var i = 0; i < list.length; i += 25) {
       var chunk = list.slice(i, i + 25).map(function(d) {
-        return { to: d.phone.replace(/\D/g, ''), message: 'OSTECH ASMaP login\nUsername: ' + d.username + '\nPassword: ' + d.password + '\n' + site + '\nChange your password when you first sign in.' };
+        return { to: d.phone.replace(/\D/g, ''), message: _loginMsg(d, false) };
       });
       if (el) el.textContent = 'Sending ' + Math.min(i + 25, list.length) + ' / ' + list.length + '…';
       var r = await asmapSMS({ bulk: chunk });
@@ -10885,7 +10885,7 @@ function openWhatsAppQueue(items, title) {
 function waLogins() {
   var site = location.origin;
   openWhatsAppQueue((window._buLogins || []).map(function(d) {
-    return { label: d.name, phone: d.phone, message: 'OSTECH ASMaP login\nUsername: ' + d.username + '\nPassword: ' + d.password + '\n' + site + '\nPlease change your password when you first sign in.' };
+    return { label: d.name, phone: d.phone, message: _loginMsg(d, true) };
   }), 'Send logins on WhatsApp');
 }
 function smsWhatsApp() {
@@ -10899,6 +10899,21 @@ function smsWhatsApp() {
   }), 'Send on WhatsApp');
 }
 // ===================== end whatsapp =====================
+
+// ===================== LOGIN MESSAGE WORDING (SMS kept within one 160-character message) =====================
+var _LOGIN_LABEL = { coordinator: 'Coordinator', supervisor: 'Supervisor', hod: 'HOD', critical_friend: 'Critical Friend', form_master: 'Form Master', house_master: 'House Master', sr_house_master: 'Senior House Master', class_prefect: 'Class Prefect', pta_prefect: 'PTA Prefect', pta_executive: 'PTA Executive' };
+function _loginMsg(d, whatsapp) {
+  var host = location.host, label = _LOGIN_LABEL[d.role] || 'Staff', coord = d.role === 'coordinator';
+  if (whatsapp) {
+    return 'OGUAA SHTS ASMaP login\n' + (coord ? 'A coordinator account has been created for you for the collection of extended classes fees.\n' : 'A ' + label + ' account has been created for you.\n')
+      + 'Username: ' + d.username + '\nPassword: ' + d.password + '\nhttps://' + host + '\nPlease change your password when you first sign in.';
+  }
+  var who = coord ? 'Coordinator account for extended classes fees.' : label + ' account created for you.';
+  var m = 'OGUAA SHTS ASMaP: ' + who + ' User: ' + d.username + ' Pass: ' + d.password + ' ' + host + ' Change password at first login.';
+  if (m.length > 160) m = 'OGUAA SHTS ASMaP: ' + who + ' User: ' + d.username + ' Pass: ' + d.password + ' ' + host + ' Change password on login.';
+  if (m.length > 160) m = 'OGUAA SHTS ASMaP: ' + label + ' login. User: ' + d.username + ' Pass: ' + d.password + ' ' + host;
+  return m;
+}
 </script>
 </body>
 </html>
