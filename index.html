@@ -2336,7 +2336,7 @@ function renderManage() {
 
     <div class="card">
       <div class="ctitle"><span class="tic">👤</span>Users (${DB.users.length})
-        <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="openBulkUsers()">&#128229; Bulk add</button> <button class="btn btn-primary btn-sm" onclick="openAddUser()">+ Add</button>
+        <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="openBulkUsers()">&#128229; Bulk add</button> <button class="btn btn-outline btn-sm" onclick="openSendLogins()">&#128241; Send logins</button> <button class="btn btn-primary btn-sm" onclick="openAddUser()">+ Add</button>
       </div>
       <div class="twrap"><table>
         <tr><th>Name</th><th>Username</th><th>Role</th><th>Classes</th><th></th></tr>
@@ -5550,12 +5550,12 @@ function renderSettings() {
         + '<td style="font-size:11px;color:var(--textm);max-width:160px;overflow:hidden;word-break:break-word">'+classes+'</td>'
         + '<td style="white-space:nowrap">'
         + (u.id !== currentUser.id
-            ? '<button class="btn btn-xs btn-outline" onclick="openEditUser(\''+u.id+'\')">&#9998;</button> <button class="btn btn-xs btn-outline" onclick="removeUser(\''+u.id+'\')">&#128465;</button>'
+            ? '<button class="btn btn-xs btn-outline" title="Send login by SMS" onclick="openSendLogins(\''+u.id+'\')">&#128241;</button> <button class="btn btn-xs btn-outline" onclick="openEditUser(\''+u.id+'\')">&#9998;</button> <button class="btn btn-xs btn-outline" onclick="removeUser(\''+u.id+'\')">&#128465;</button>'
             : '<span style="color:var(--textm);font-size:11px">you</span>')
         + '</td></tr>';
     }).join('');
     html += '<div class="card"><div class="ctitle"><span class="tic">&#128100;</span>Users ('+DB.users.length+')'
-      + '<button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="openBulkUsers()">&#128229; Bulk add</button> <button class="btn btn-primary btn-sm" onclick="openAddUser()">+ Add User</button></div>'
+      + '<button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="openBulkUsers()">&#128229; Bulk add</button> <button class="btn btn-outline btn-sm" onclick="openSendLogins()">&#128241; Send logins</button> <button class="btn btn-primary btn-sm" onclick="openAddUser()">+ Add User</button></div>'
       + '<div class="twrap"><table><tr><th>Name</th><th>Username</th><th>Role</th><th>Classes</th><th></th></tr>'
       + userRows + '</table></div></div>';
 
@@ -10798,13 +10798,68 @@ function sendBulkLoginSMS() {
       });
       if (el) el.textContent = 'Sending ' + Math.min(i + 25, list.length) + ' / ' + list.length + '…';
       var r = await asmapSMS({ bulk: chunk });
-      if (r && r.success !== false) { sent += (r.sent != null ? r.sent : chunk.length); failed += (r.failed || 0); } else failed += chunk.length;
+      if (r && r.success !== false) { sent += (r.sent != null ? r.sent : chunk.length); failed += (r.failed || 0); if (r.sandbox) window._buSandbox = true; } else { failed += chunk.length; window._buErr = (r && r.error) || 'Could not reach the SMS service'; }
     }
-    if (el) el.innerHTML = '<strong>' + sent + '</strong> accepted' + (failed ? ', <strong style="color:var(--red)">' + failed + '</strong> failed' : '') + '.';
+    if (el) el.innerHTML = '<strong>' + sent + '</strong> accepted' + (failed ? ', <strong style="color:var(--red)">' + failed + '</strong> failed' : '') + '.'
+      + (window._buErr && failed ? '<div style="color:var(--red);margin-top:4px"><strong>Reason:</strong> ' + _x(window._buErr) + '<br>Fix it in Supabase (see Settings help), then press Send SMS again: the same passwords still work.</div>' : '')
+      + (window._buSandbox ? '<div style="color:var(--amber);margin-top:4px">SMS is in TEST mode, so messages were accepted but not delivered.</div>' : '');
+    window._buErr = ''; window._buSandbox = false;
     audit('BULK_LOGIN_SMS', sent + ' sent, ' + failed + ' failed', 'users');
   }, 'Send', 'btn-primary');
 }
 // ===================== end bulk users =====================
+
+// ===================== SEND / RESEND LOGINS (existing users) =====================
+function openSendLogins(pre) {
+  var us = DB.users.filter(function(u) { return u.id !== currentUser.id && u.role !== 'admin'; });
+  var rows = us.map(function(u) {
+    var ok = !!u.phone;
+    return '<label class="sl-row" data-s="' + _x((u.name + ' ' + u.username + ' ' + u.role).toLowerCase()) + '" style="display:flex;gap:8px;align-items:center;padding:6px 4px;border-bottom:1px solid var(--grayl);font-size:12px' + (ok ? '' : ';opacity:.5') + '">'
+      + '<input type="checkbox" class="sl-cb" value="' + _x(u.id) + '" ' + (ok ? '' : 'disabled ') + (pre && pre === u.id ? 'checked' : '') + '>'
+      + '<span style="flex:1"><strong>' + _x(u.name) + '</strong><br><span style="color:var(--textm);font-size:10px">' + _x(u.username) + ' · ' + _x(u.role) + ' · ' + _x(u.phone || 'no phone on file') + '</span></span></label>';
+  }).join('');
+  openModal('Send logins by SMS',
+    '<div style="font-size:12px;color:var(--textm);margin-bottom:10px">Passwords cannot be read back, so this <strong>sets a new temporary password</strong> for each person you tick (their old password stops working) and then lets you text it to them. They must change it at first sign-in. People with no phone number are greyed out: add it with the edit button first.</div>'
+    + '<div style="display:flex;gap:6px;margin-bottom:10px"><input type="tel" id="sl-test" placeholder="Your number, to test SMS first" style="flex:1"><button class="btn btn-outline btn-sm" onclick="sendTestSMS()">Test SMS</button></div><div id="sl-test-res" style="font-size:12px;margin:-4px 0 10px"></div>'
+    + '<input type="text" placeholder="Search name, username or role" oninput="slFilter(this.value)" style="width:100%;margin-bottom:6px">'
+    + '<div style="display:flex;gap:8px;margin-bottom:6px"><button class="btn btn-xs btn-outline" onclick="slAll(true)">Tick all with phone</button><button class="btn btn-xs btn-outline" onclick="slAll(false)">Clear</button></div>'
+    + '<div class="twrap" style="max-height:38vh;overflow:auto;padding:0 6px">' + (rows || '<div style="padding:12px;font-size:12px">No users yet.</div>') + '</div>'
+    + '<button class="btn btn-primary" style="width:100%;margin-top:12px" onclick="resetAndSendLogins()">Reset passwords &amp; prepare SMS</button>');
+}
+function slFilter(q) { q = String(q || '').toLowerCase(); document.querySelectorAll('.sl-row').forEach(function(r) { r.style.display = r.getAttribute('data-s').indexOf(q) >= 0 ? 'flex' : 'none'; }); }
+function slAll(on) { document.querySelectorAll('.sl-cb:not(:disabled)').forEach(function(c) { if (c.parentNode.style.display !== 'none') c.checked = on; }); }
+async function sendTestSMS() {
+  var el = document.getElementById('sl-test-res'), v = ((document.getElementById('sl-test') || {}).value || '').trim(), np = _normPhone(v);
+  if (!v || np.bad) { if (el) el.innerHTML = '<span style="color:var(--red)">Type a valid Ghana number first.</span>'; return; }
+  if (el) el.textContent = 'Sending test…';
+  var r = await asmapSMS({ to: np.v.replace(/\D/g, ''), message: 'ASMaP test: if you can read this, SMS is working.' });
+  if (!el) return;
+  if (!r) el.innerHTML = '<span style="color:var(--red)">Could not reach the SMS service (network, or the send-sms function is not deployed).</span>';
+  else if (r.success === false) el.innerHTML = '<span style="color:var(--red)"><strong>Failed:</strong> ' + _x(r.error || 'unknown error') + '</span>';
+  else if (r.sandbox) el.innerHTML = '<span style="color:var(--amber)">Accepted, but SMS is in TEST mode (ARKESEL_SANDBOX=true), so nothing is delivered.</span>';
+  else el.innerHTML = '<span style="color:var(--g2)"><strong>Accepted by Arkesel.</strong> You should receive it shortly.</span>';
+}
+function resetAndSendLogins() {
+  var ids = Array.from(document.querySelectorAll('.sl-cb:checked')).map(function(c) { return c.value; });
+  if (!ids.length) { showToast('Tick at least one person', 'warning'); return; }
+  showConfirm('Reset passwords', 'Set a new temporary password for ' + ids.length + ' user(s)? Their old passwords stop working immediately.', async function() {
+    if (autoRefreshTimer) { clearInterval(autoRefreshTimer); autoRefreshTimer = null; }
+    openModal('Resetting…', '<div id="bu-prog" style="font-size:13px">0 / ' + ids.length + '</div>');
+    var done = [], fail = [];
+    for (var i = 0; i < ids.length; i++) {
+      var u = DB.users.find(function(x) { return x.id === ids[i]; }); if (!u) continue;
+      var pw = _buPw();
+      try {
+        await callAdminUsers('update_user', { legacy_id: u.id, full_name: u.name, username: u.username, role: u.role, assigned_classes: u.classes || [], permissions: u.permissions || [], password: pw });
+        done.push({ name: u.name, username: u.username, password: pw, phone: u.phone || '', role: u.role, classes: (u.classes || []).join(', ') });
+      } catch (ex) { fail.push(u.name + ': ' + ex.message); }
+      var p = document.getElementById('bu-prog'); if (p) p.textContent = (i + 1) + ' / ' + ids.length;
+    }
+    window._buLogins = done; audit('RESET_PASSWORDS', done.length + ' users', 'users');
+    _buResults(done, fail);
+  }, 'Reset', 'btn-primary');
+}
+// ===================== end send logins =====================
 </script>
 </body>
 </html>
