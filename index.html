@@ -11052,6 +11052,50 @@ function _collectorCard(cls) {
   };
 })();
 // ===================== end totals / collectors =====================
+
+// ===================== COORDINATOR HOME: "collected by me" vs "whole class" =====================
+function _coordHomeSplit() {
+  var el = document.getElementById('page-dashboard'); if (!el) return;
+  var vis = visiblePurposes(), limited = vis.length < DB.purposes.length, my = currentUser.classes || [];
+  var inCls = DB.payments.filter(function(p) { return my.indexOf(p.class) >= 0 && p.approvalStatus === 'confirmed'; });
+  var mine = inCls.filter(function(p) { return p.recordedBy === currentUser.id; });
+  function sums(list) {
+    var by = {}, raw = 0; DB.purposes.forEach(function(x) { by[x.name] = 0; });
+    list.forEach(function(p) { var a = _payPurposeAmounts(p); Object.keys(a).forEach(function(k) { by[k] = (by[k] || 0) + a[k]; }); raw += (p.rawAmount || p.amount); });
+    var tot = limited ? vis.reduce(function(t, n) { return t + (by[n] || 0); }, 0) : raw;
+    var un = limited ? 0 : Math.max(0, Math.round((raw - DB.purposes.reduce(function(t, x) { return t + (by[x.name] || 0); }, 0)) * 100) / 100);
+    return { by: by, tot: tot, un: un };
+  }
+  var m = sums(mine), c = sums(inCls);
+  el.querySelectorAll('.slbl').forEach(function(l) {
+    if (l.textContent.trim() === 'Collected (my classes)') {
+      l.textContent = 'Class total (all collectors)';
+      var card = l.closest('.scard');
+      if (card) card.insertAdjacentHTML('beforebegin', '<div class="scard"><div class="sval">GHS ' + m.tot.toLocaleString() + '</div><div class="slbl">Collected by me</div></div>');
+    }
+  });
+  el.querySelectorAll('.card').forEach(function(card) {
+    var t = card.querySelector('.ctitle');
+    if (!t || !/My Collections by Purpose/.test(t.textContent)) return;
+    var rows = DB.purposes.filter(function(pp) { return vis.indexOf(pp.name) >= 0; }).map(function(pp) {
+      return '<tr><td>' + _x(pp.name) + '</td><td style="text-align:right"><strong>' + _gh(m.by[pp.name]) + '</strong></td><td style="text-align:right">' + _gh(c.by[pp.name]) + '</td></tr>';
+    }).join('');
+    if (!limited && (c.un || m.un)) rows += '<tr><td>Not yet allocated</td><td style="text-align:right">' + _gh(m.un) + '</td><td style="text-align:right">' + _gh(c.un) + '</td></tr>';
+    rows += '<tr style="font-weight:800;border-top:2px solid var(--g2)"><td>Total</td><td style="text-align:right">' + _gh(m.tot) + '</td><td style="text-align:right">' + _gh(c.tot) + '</td></tr>';
+    card.innerHTML = '<div class="ctitle"><span class="tic">&#128176;</span>Collections by Purpose</div>'
+      + '<div style="font-size:11px;color:var(--textm);margin-bottom:8px"><strong>Collected by me</strong> is only what you entered yourself. <strong>Whole class</strong> is everything paid in your classes by every collector. Open <strong>Ledger</strong> to see each payment and who collected it.</div>'
+      + '<div class="twrap"><table><tr><th>Purpose</th><th style="text-align:right">Collected by me</th><th style="text-align:right">Whole class</th></tr>' + rows + '</table></div>';
+  });
+}
+(function() {
+  var rd = window.renderDashboard;
+  if (typeof rd === 'function') window.renderDashboard = function() {
+    var r = rd.apply(this, arguments);
+    try { if (currentUser && currentUser.role === 'coordinator') _coordHomeSplit(); } catch (e) {}
+    return r;
+  };
+})();
+// ===================== end coordinator home =====================
 </script>
 </body>
 </html>
