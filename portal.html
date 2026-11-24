@@ -176,7 +176,7 @@ tr:last-child td{border-bottom:none;}
         <button class="btn btn-out" onclick="goScreen('s-lookup')" style="padding:10px;font-size:13px">No PIN yet? Pay here</button>
       </div>
       <div style="font-size:11px;color:var(--textm);text-align:center;margin-top:14px;line-height:1.7">
-        PIN valid for 2 views per semester.<br>School office: 0247595408
+        PIN valid for 2 views per semester.<br>School office: 0241557824 / 0542322727
       </div>
     </div>
   </div>
@@ -233,7 +233,7 @@ async function searchName(){
     if(d.error==='rate'){showErr('e-lookup','Too many attempts. Please wait a few minutes and try again.');return;}
     if(d.tooMany){showErr('e-lookup','Too many students match. Please type the full name.');return;}
     CANDS=d.results||[];
-    if(!CANDS.length){showErr('e-lookup','No student found with that name.\nCheck the spelling or contact the school office: 0247595408');return;}
+    if(!CANDS.length){showErr('e-lookup','No student found with that name.\nCheck the spelling or contact the school office: 0241557824 / 0542322727');return;}
     document.getElementById('cand-box').innerHTML='<div style="font-size:12px;font-weight:700;color:var(--textm);margin-bottom:6px">'+(CANDS.length>1?'SEVERAL MATCHES. CHOOSE YOUR WARD:':'IS THIS YOUR WARD?')+'</div>'
       +CANDS.map(function(c,i){return '<div class="cand" id="cand-'+i+'" onclick="pickCand('+i+')"><div class="cn">'+esc(c.name)+'</div><div class="cm">Class: '+esc(c.class||'—')+' &nbsp;|&nbsp; BECE No.: '+esc(c.bece||'—')+'</div></div>';}).join('');
     if(CANDS.length===1)pickCand(0);
@@ -255,9 +255,9 @@ async function verifyDob(){
   var btn=document.getElementById('btn-dob');btn.textContent='Checking…';btn.disabled=true;
   try{
     var d=await pcall({action:'verify',h:PICK.h,dob:dob});
-    if(d.error==='rate'||d.error==='locked'){showErr('e-lookup','Too many wrong attempts for this student. Please wait an hour or contact the school office: 0247595408');return;}
+    if(d.error==='rate'||d.error==='locked'){showErr('e-lookup','Too many wrong attempts for this student. Please wait an hour or contact the school office: 0241557824 / 0542322727');return;}
     if(d.error==='expired'){showErr('e-lookup','This search has expired. Please search again.');PICK=null;document.getElementById('dob-box').style.display='none';return;}
-    if(d.error==='nodob'){showErr('e-lookup','Your ward\'s date of birth is not yet recorded. Please contact the school office: 0247595408');return;}
+    if(d.error==='nodob'){showErr('e-lookup','Your ward\'s date of birth is not yet recorded. Please contact the school office: 0241557824 / 0542322727');return;}
     if(d.error==='mismatch'||!d.student){showErr('e-lookup','That date of birth does not match our records. Please check it and try again.');return;}
     STUDENT=d.student;document.getElementById('dob-inp').value='';buildPayScreen(STUDENT);goScreen('s-pay');
   }catch(e){showErr('e-lookup','Connection error. Check your internet and try again.');}
@@ -321,9 +321,9 @@ async function verifyPay(ref,phone){
       document.getElementById('ok-pin').style.display='block';
       goScreen('s-pin');
     }else{
-      showErr('e-pay','Payment received but PIN error. Keep ref: '+ref+' and contact school: 0247595408');
+      showErr('e-pay','Payment received but PIN error. Keep ref: '+ref+' and contact school: 0241557824 / 0542322727');
     }
-  }catch(e){showErr('e-pay','Verification error. Keep ref: '+ref+' — contact school: 0247595408');}
+  }catch(e){showErr('e-pay','Verification error. Keep ref: '+ref+' — contact school: 0241557824 / 0542322727');}
   finally{btn.textContent='💳 Pay via Mobile Money';btn.disabled=false;}
 }
 
@@ -337,11 +337,11 @@ async function checkPin(){
     var res=await pcall({action:'report',pin:pin});
     if(res.error==='rate'){showErr('e-pin','Too many attempts. Please wait a few minutes and try again.');return;}
     var d=res.student?[res.student]:[];
-    if(!d||!d.length){showErr('e-pin','PIN not found or not activated.\nIf you just paid, wait a moment and retry.\nSchool office: 0247595408');return;}
+    if(!d||!d.length){showErr('e-pin','PIN not found or not activated.\nIf you just paid, wait a moment and retry.\nSchool office: 0241557824 / 0542322727');return;}
     var s=d[0];
     var uk='portal_'+pin+'_'+sem();
     var uses=parseInt(localStorage.getItem(uk)||'0');
-    if(uses>=2){showErr('e-pin','PIN limit reached (2 views) for this semester.\nPay for new access or contact school: 0247595408');return;}
+    if(uses>=2){showErr('e-pin','PIN limit reached (2 views) for this semester.\nPay for new access or contact school: 0241557824 / 0542322727');return;}
     localStorage.setItem(uk,String(uses+1));
     await showReport(s,uses+1,res);
   }catch(e){showErr('e-pin','Connection error. Check internet and try again.');}
@@ -411,7 +411,7 @@ async function showReport(s,viewNum,extra){
       +s.items_submitted.map(function(i){return'<span class="badge bg">✓ '+i+'</span>';}).join('')+'</div></div>';
   }
 
-  h+='<div class="pf">Oguaa Senior High Technical School · Cape Coast, Ghana<br>Boys: 0247595408 / 0242058935 &nbsp;|&nbsp; Girls: 0243169960 / 0244131353<br>ASMaP — Adombra School Management Platform</div>';
+  h+='<div class="pf">Oguaa Senior High Technical School · Cape Coast, Ghana<br>School office: 0241557824 / 0542322727<br>ASMaP — Adombra School Management Platform</div>';
 
   document.getElementById('rpt-content').innerHTML=h;
 }

@@ -6398,7 +6398,7 @@ async function waiveFine(id) {
 var CLS_ABBR = { 'AGRICULTURE': 'AGR', 'BUSINESS': 'BUS', 'GENERAL ARTS': 'ARTS', 'HOME ECONOMICS': 'HOM', 'LANGUAGE': 'LANG', 'SCIENCE': 'SCI', 'TECHNICAL': 'TECH', 'VISUAL ARTS': 'VIS' }, _clsForm = '3';
 function _autoCode(n) { var m = String(n).match(/^(\d)\s*(.+?)\s*(\d+)\s*([A-Za-z]?)$/); if (!m) return ''; var ab = CLS_ABBR[m[2].toUpperCase()]; return ab ? m[1] + ab + m[3] + m[4].toUpperCase() : ''; }
 function _daysAgo(k) { var d = new Date(); d.setDate(d.getDate() - k); return d.toISOString().split('T')[0]; }
-function _pw() { var c = 'abcdefghjkmnpqrstuvwxyz23456789', o = ''; for (var i = 0; i < 8; i++) o += c.charAt(Math.floor(Math.random() * c.length)); return o; }
+function _pw() { return _buPw(); }   // 10 characters, always letters and digits
 function _clsList() {
   var act = {}; TT.slots.forEach(function(s) { if (!_isFixed(s)) s.cls.forEach(function(c) { act[c] = 1; }); });
   return TT.classes.filter(function(c) { return act[c.id] && String(c.n).charAt(0) === _clsForm; });
@@ -7834,7 +7834,7 @@ function smsResultSearch() {
 function generatePortalPin(studentId) {
   var s = DB.students.find(function(x){ return x.id === studentId; });
   if (!s) return;
-  var pin = Math.random().toString(36).substring(2,10).toUpperCase();
+  var _pa = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', _pb = new Uint8Array(8); crypto.getRandomValues(_pb); var pin = Array.prototype.map.call(_pb, function(x) { return _pa.charAt(x % _pa.length); }).join('');
   s.portalPin = pin;
   s.portalUnlocked = true;
   sbPatch('students', studentId, { portal_pin: pin, portal_unlocked: true }).then(function() {
