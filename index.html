@@ -464,6 +464,7 @@ input[type=text]:focus,input[type=number]:focus,input[type=date]:focus,input[typ
   <div id="page-pta" class="page"></div>
   <div id="page-behaviour" class="page"></div>
   <div id="page-prefect" class="page"></div>
+  <div id="page-reportcards" class="page"></div>
 </div>
 
 <!-- ═══════════ MODAL ═══════════ -->
@@ -1098,6 +1099,7 @@ function buildNav() {
 
   // Scores — subject teachers, form masters, admin
   if (['admin','form_master'].includes(r)) tabs.push({id:'scores',icon:'📝',label:'Scores'});
+  if (r==='admin') tabs.push({id:'reportcards',icon:'📄',label:'Report Cards'});
 
   // Behaviour — house masters, form masters
   if (['admin','house_master','sr_house_master','form_master'].includes(r))
@@ -1162,6 +1164,7 @@ function renderPage(id) {
     case 'pta': renderPTA(); break;
     case 'behaviour': renderBehaviour(); break;
     case 'prefect': renderPrefectReport(); break;
+    case 'reportcards': renderReportCards(); break;
   }
 }
 
@@ -5448,6 +5451,7 @@ function renderSettings() {
       + '</div>'
       + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'
       + '<div class="fgrp"><label>PORTAL ACCESS FEE (GHS per semester)</label><input type="number" id="ss-portal-fee" min="0" value="'+(s.portalFee||10)+'"></div>'
+      + '<div class="fgrp"><label>REPORT CARD / TRANSCRIPT SITE (https address)</label><input type="url" id="ss-transcript-url" value="'+_x(s.transcriptUrl||'')+'" placeholder="https://transcript-oguaashts.onrender.com"></div>'
       + '<div class="fgrp"><label>PAYSTACK PUBLIC KEY</label><input type="text" id="ss-paystack-key" placeholder="Paste Paystack public key" value="'+(s.paystackPublicKey||'')+'"></div>'
       + '</div>'
       + '<div class="fgrp"><label>SCHOOL TYPE</label>'
@@ -5714,6 +5718,8 @@ function saveSchoolSettings() {
   var gesCode = ((document.getElementById('ss-ges')||{}).value||'').trim();
   var headmaster = ((document.getElementById('ss-head')||{}).value||'').trim();
   var fee     = parseFloat((document.getElementById('ss-portal-fee')||{}).value) || 10;
+  var turl    = ((document.getElementById('ss-transcript-url')||{}).value || '').trim().replace(/\/+$/, '');
+  if (turl && !/^https:\/\/[^\s"'<>]+$/i.test(turl)) { showToast('The transcript site address must start with https://', 'error'); return; }
   var pkey    = ((document.getElementById('ss-paystack-key')||{}).value||'').trim();
   var stype   = ((document.getElementById('ss-stype')||{}).value||'Day & Boarding');
 
@@ -5744,6 +5750,7 @@ function saveSchoolSettings() {
   DB.settings.gesCode        = gesCode;
   DB.settings.headmaster     = headmaster;
   DB.settings.portalFee      = fee;
+  DB.settings.transcriptUrl  = turl;
   DB.settings.paystackPublicKey = pkey;
   DB.settings.schoolType     = stype;
   DB.settings.houses         = houses;
@@ -10564,7 +10571,7 @@ function _sortClasses() {
 // ===================== GROUPED MENU (admin and any role with many tabs) =====================
 var _NAV_GROUPS = [
   { k: 'daily',     icon: '\uD83D\uDDD3\uFE0F', label: 'Daily',     ids: ['attendance', 'payments', 'ledger', 'approvals'] },
-  { k: 'academics', icon: '\uD83D\uDCDA',        label: 'Academics', ids: ['scores', 'behaviour', 'lessons', 'prefect'] },
+  { k: 'academics', icon: '\uD83D\uDCDA',        label: 'Academics', ids: ['scores', 'behaviour', 'lessons', 'prefect', 'reportcards'] },
   { k: 'reports',   icon: '\uD83D\uDCC8',        label: 'Reports',   ids: ['reports', 'treports'] },
   { k: 'people',    icon: '\uD83D\uDC64',        label: 'People',    ids: ['manage', 'admission', 'pta', 'sms'] },
   { k: 'system',    icon: '\uD83D\uDEE0\uFE0F', label: 'System',    ids: ['audit', 'settings'] }
@@ -10914,6 +10921,33 @@ function _loginMsg(d, whatsapp) {
   if (m.length > 160) m = 'OGUAA SHTS ASMaP: ' + label + ' login. User: ' + d.username + ' Pass: ' + d.password + ' ' + host;
   return m;
 }
+
+// ===================== REPORT CARDS / TRANSCRIPTS (links to the separate transcript system) =====================
+function _rcUrl() { var u = (DB.settings && DB.settings.transcriptUrl) || 'https://transcript-oguaashts.onrender.com'; return /^https:\/\//i.test(u) ? u.replace(/\/+$/, '') : 'https://transcript-oguaashts.onrender.com'; }
+function openReportCards(path) { window.open(_rcUrl() + (path || ''), '_blank', 'noopener,noreferrer'); }
+function copyReportCardLink() {
+  var u = _rcUrl();
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(u).then(function() { showToast('Link copied ✓', 'success'); }, function() { showToast(u, 'info'); });
+  else showToast(u, 'info');
+}
+function renderReportCards() {
+  var el = document.getElementById('page-reportcards'); if (!el) return;
+  var u = _x(_rcUrl());
+  el.innerHTML = '<div class="stitle" style="margin-bottom:12px">&#128196; Report Cards &amp; Transcripts</div>'
+    + '<div class="card"><div class="ctitle"><span class="tic">&#128228;</span>Upload for a class</div>'
+    + '<ol style="font-size:13px;line-height:1.9;padding-left:18px;margin-bottom:12px">'
+    + '<li>Open the uploader and sign in with your transcript-system staff account.</li>'
+    + '<li>Choose <strong>Upload</strong>, type the class name (for example SCI 2) and pick the batch PDF exported from the WAEC / GES system.</li>'
+    + '<li>One class at a time. Then check any students it flags under <strong>Review</strong>.</li></ol>'
+    + '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary btn-sm" onclick="openReportCards(\'/admin/login\')">&#128228; Open the uploader (staff)</button>'
+    + '<button class="btn btn-outline btn-sm" onclick="openReportCards(\'\')">&#128065; See what parents see</button></div></div>'
+    + '<div class="card"><div class="ctitle"><span class="tic">&#128106;</span>For parents</div>'
+    + '<div style="font-size:13px;margin-bottom:10px">Parents search their ward\'s name, confirm the date of birth and download the report card. Share this link:</div>'
+    + '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><code style="background:var(--g5);padding:8px 12px;border-radius:10px;font-size:12px;word-break:break-all">' + u + '</code>'
+    + '<button class="btn btn-outline btn-sm" onclick="copyReportCardLink()">Copy link</button></div>'
+    + '<div style="font-size:11px;color:var(--textm);margin-top:10px">The address can be changed in Settings &rarr; School Profile. Keep the transcript fee equal to the portal fee so parents are charged the same amount.</div></div>';
+}
+// ===================== end report cards =====================
 </script>
 </body>
 </html>

@@ -78,7 +78,8 @@ Deno.serve(async (req) => {
     if (b.action === 'config') {
       const { data } = await sb.from('app_config').select('settings').eq('key', 'main').maybeSingle();
       const s = (data && data.settings) || {};
-      return out({ portalFee: s.portalFee || 10, paystackPublicKey: s.paystackPublicKey || '' });
+      const tu = typeof s.transcriptUrl === 'string' && /^https:\/\/[^\s"'<>]+$/i.test(s.transcriptUrl) ? s.transcriptUrl : '';
+      return out({ portalFee: s.portalFee || 10, paystackPublicKey: s.paystackPublicKey || '', transcriptUrl: tu });
     }
 
     // ----- search by name: returns only name, class and the LAST 4 digits of the BECE number -----

@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="referrer" content="no-referrer">
 <title>Oguaa SHTS — Parent Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://js.paystack.co/v1/inline.js"></script>
@@ -116,6 +117,8 @@ tr:last-child td{border-bottom:none;}
       <div style="margin-top:16px;border-top:1px solid var(--grayb);padding-top:14px;">
         <div style="font-size:12px;color:var(--textm);margin-bottom:8px;font-weight:600">ALREADY HAVE A PIN?</div>
         <button class="btn btn-out" onclick="goScreen('s-pin')" style="padding:10px">Enter PIN directly →</button>
+        <div style="font-size:12px;color:var(--textm);margin:16px 0 8px;font-weight:600">LOOKING FOR THE OFFICIAL REPORT CARD / TRANSCRIPT?</div>
+        <button class="btn btn-out" onclick="openTranscript()" style="padding:10px">📄 Open the transcript site →</button>
       </div>
     </div>
   </div>
@@ -205,7 +208,7 @@ async function pcall(body){
   return await r.json();
 }
 
-var STUDENT=null, FEE=10, PS_KEY='';
+var STUDENT=null, FEE=10, PS_KEY='', TRANSCRIPT_URL='https://transcript-oguaashts.onrender.com';
 
 function sem(){var n=new Date(),y=n.getFullYear(),m=n.getMonth()+1,ay=m>=9?(y+'_'+(y+1)):((y-1)+'_'+y),t=m>=9?'T1':m<=4?'T2':'T3';return ay+'_'+t;}
 function goScreen(id){document.querySelectorAll('.screen').forEach(function(s){s.classList.remove('active');});document.getElementById(id).classList.add('active');window.scrollTo(0,0);}
@@ -213,10 +216,11 @@ function showErr(id,msg){var e=document.getElementById(id);if(e){e.textContent=m
 function hideErr(id){var e=document.getElementById(id);if(e)e.style.display='none';}
 function logout(){STUDENT=null;document.getElementById('name-inp').value='';document.getElementById('cand-box').innerHTML='';document.getElementById('dob-box').style.display='none';document.getElementById('dob-inp').value='';PICK=null;CANDS=[];document.getElementById('pin-inp').value='';goScreen('s-lookup');}
 
+function openTranscript(){window.open(TRANSCRIPT_URL,'_blank','noopener,noreferrer');}
 async function loadCfg(){
   try{
     var d=await pcall({action:'config'});
-    FEE=parseFloat(d.portalFee||10);PS_KEY=d.paystackPublicKey||'';
+    FEE=parseFloat(d.portalFee||10);PS_KEY=d.paystackPublicKey||'';if(d.transcriptUrl&&/^https:\/\/[^\s"'<>]+$/i.test(d.transcriptUrl)){TRANSCRIPT_URL=String(d.transcriptUrl).replace(/\/+$/,'');}
   }catch(e){}
 }
 
@@ -411,6 +415,7 @@ async function showReport(s,viewNum,extra){
       +s.items_submitted.map(function(i){return'<span class="badge bg">✓ '+i+'</span>';}).join('')+'</div></div>';
   }
 
+  h+='<div class="pcard"><div class="pct">📄 Official Report Card / Transcript</div><div style="font-size:13px;margin-bottom:10px">Download your ward\'s official report card or transcript from the school\'s transcript site.</div><button class="btn btn-g" onclick="openTranscript()">Open the transcript site →</button></div>';
   h+='<div class="pf">Oguaa Senior High Technical School · Cape Coast, Ghana<br>School office: 0241557824 / 0542322727<br>ASMaP — Adombra School Management Platform</div>';
 
   document.getElementById('rpt-content').innerHTML=h;
