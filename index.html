@@ -4193,12 +4193,18 @@ buildBackdrop();
 
 
 // COORDINATOR STATS & REPORTS
+var _OTHER_COLLECTOR = 'Recorded by admin / office (not a coordinator)';
+function _isCollectedBy(p, c) {
+  if (c && c.__other) return !DB.users.some(function(u) { return u.role === 'coordinator' && _isCollectedBy(p, u); });
+  if (p.recordedBy) return p.recordedBy === c.id;
+  return !!(p.recordedByName && p.recordedByName === c.name);
+}
+function _collectedClasses(pays) {
+  var seen = {}; pays.forEach(function(p) { if (p.class) seen[p.class] = 1; });
+  return Object.keys(seen).sort(classCmp);
+}
 function getCoordinatorStats() {
   var coords = DB.users.filter(function(u){ return u.role === 'coordinator'; });
-  // Admin sees all classes
-  if (currentUser && currentUser.role === 'admin') {
-    // Make a virtual "all" entry if no coordinators have data
-  }
   var purposes = DB.purposes.map(function(p){ return p.name; });
   var yrFilter = getActiveYearFilter();
   var confirmedPays = DB.payments.filter(function(p){
@@ -4206,59 +4212,58 @@ function getCoordinatorStats() {
     var inYr = !yrFilter || !p.date || (yrParts[0]&&p.date.startsWith(yrParts[0])) || (yrParts[1]&&p.date.startsWith(yrParts[1]));
     return p.approvalStatus === 'confirmed' && inYr;
   });
-
-  // Build allocation lookup keyed by paymentId
   var allocsByPayment = {};
   (DB.allocations||[]).forEach(function(a) {
     if (!allocsByPayment[a.paymentId]) allocsByPayment[a.paymentId] = [];
     allocsByPayment[a.paymentId].push(a);
   });
 
-  var etAmt = DB.paySettings.etAmount || 500;
-
-  var rows = coords.map(function(coord) {
-    var myPays = confirmedPays.filter(function(p){
-      return (coord.classes||[]).includes(p.class);
-    });
+  // Every payment is credited to the person who RECORDED it (not to everyone assigned to the class).
+  function buildRow(name, myPays) {
     var byPurpose = {};
     purposes.forEach(function(pur){ byPurpose[pur] = 0; });
-
-    // Distribute all non-ET allocations from allocation records
     myPays.forEach(function(p) {
       var allocs = allocsByPayment[p.id];
-      if (allocs) {
-        allocs.forEach(function(a) {
-          if (a.purpose !== 'Extended Teaching') {
-            if (byPurpose.hasOwnProperty(a.purpose)) byPurpose[a.purpose] += a.amount;
-            else if (byPurpose.hasOwnProperty('Others')) byPurpose['Others'] += a.amount;
-          }
-        });
-      }
+      if (allocs) allocs.forEach(function(a) {
+        if (a.purpose !== 'Extended Teaching') {
+          if (byPurpose.hasOwnProperty(a.purpose)) byPurpose[a.purpose] += a.amount;
+          else if (byPurpose.hasOwnProperty('Others')) byPurpose['Others'] += a.amount;
+        }
+      });
     });
-
-    // ET via canonical helper — single source of truth
     byPurpose['Extended Teaching'] = getETAmountFromPayments(myPays);
+    var total = myPays.reduce(function(sum,p){ return sum + (p.rawAmount||p.amount); }, 0);
+    return { name: name, classes: _collectedClasses(myPays), byPurpose: byPurpose, total: total, count: myPays.length };
+  }
 
-    var total = myPays.reduce(function(s,p){ return s + (p.rawAmount||p.amount); }, 0);
-    return { name: coord.name, classes: coord.classes||[], byPurpose: byPurpose, total: total, count: myPays.length };
+  var rows = coords.map(function(coord) {
+    var r = buildRow(coord.name, confirmedPays.filter(function(p){ return _isCollectedBy(p, coord); }));
+    r.assigned = coord.classes || [];
+    return r;
   });
-
-  // Filter out coordinators with zero activity but keep at least the ones with data
   rows = rows.filter(function(r){ return r.total > 0; });
+
+  // Payments recorded by the admin (bulk imports, office entries) or by anyone who is not a coordinator
+  var otherPays = confirmedPays.filter(function(p){ return !coords.some(function(c){ return _isCollectedBy(p, c); }); });
+  if (otherPays.length) {
+    var o = buildRow(_OTHER_COLLECTOR, otherPays);
+    if (o.total > 0) rows.push(o);
+  }
 
   var totals = { byPurpose: {}, total: 0 };
   purposes.forEach(function(pur) {
-    totals.byPurpose[pur] = rows.reduce(function(s,r){ return s + (r.byPurpose[pur]||0); }, 0);
+    totals.byPurpose[pur] = rows.reduce(function(sum,r){ return sum + (r.byPurpose[pur]||0); }, 0);
   });
-  totals.total = rows.reduce(function(s,r){ return s + r.total; }, 0);
+  totals.total = rows.reduce(function(sum,r){ return sum + r.total; }, 0);
 
   return { rows: rows, totals: totals, purposes: purposes };
 }
 
 function openCoordDetail(coordName) {
   var coord = DB.users.find(function(u){ return u.name === coordName; });
+  if (!coord && coordName === _OTHER_COLLECTOR) coord = { id: '__other__', name: coordName, classes: [], __other: true };
   if (!coord) return;
-  var myPays = DB.payments.filter(function(p){ return p.recordedBy === coord.id || (coord.classes||[]).includes(p.class); });
+  var myPays = DB.payments.filter(function(p){ return _isCollectedBy(p, coord); });
   var confirmed = myPays.filter(function(p){ return p.approvalStatus === 'confirmed'; });
   var pending = myPays.filter(function(p){ return p.approvalStatus === 'pending'; });
   var total = confirmed.reduce(function(s,p){ return s + (p.rawAmount||p.amount); }, 0);
@@ -4290,7 +4295,7 @@ function openCoordDetail(coordName) {
     + '<div class="scard" style="flex:1;border-left:4px solid var(--g2)"><div class="sval" style="font-size:18px">GHS ' + total.toLocaleString() + '</div><div class="slbl">Total confirmed</div></div>'
     + '<div class="scard gold" style="flex:1"><div class="sval" style="font-size:18px">' + pending.length + '</div><div class="slbl">Pending approval</div></div>'
     + '</div>'
-    + '<div style="font-size:12px;color:var(--textm);margin-bottom:8px">Assigned classes: <strong>' + ((coord.classes||[]).join(', ')||'All') + '</strong></div>'
+    + '<div style="font-size:12px;color:var(--textm);margin-bottom:8px">Assigned classes: <strong>' + ((coord.classes||[]).join(', ')||'None') + '</strong><br>Collected in: <strong>' + (_collectedClasses(myPays).join(', ')||'-') + '</strong> &middot; every payment here was recorded by this person.</div>'
     + '<div style="margin-bottom:12px">' + purposeBreakdown + '</div>'
     + '<div class="twrap"><table>'
     + '<tr><th>Date</th><th>Student</th><th>Class</th><th>Amount</th><th>Status</th></tr>'
@@ -10948,6 +10953,105 @@ function renderReportCards() {
     + '<div style="font-size:11px;color:var(--textm);margin-top:10px">The address can be changed in Settings &rarr; School Profile. Keep the transcript fee equal to the portal fee so parents are charged the same amount.</div></div>';
 }
 // ===================== end report cards =====================
+
+// ===================== TOTALS BY FORM / CLASS / PURPOSE (admin) + WHO COLLECTED (ledger) =====================
+function _payPurposeAmounts(p) {
+  var by = {}; DB.purposes.forEach(function(x) { by[x.name] = 0; });
+  (DB.allocations || []).forEach(function(a) { if (a.paymentId === p.id && a.purpose !== 'Extended Teaching' && by.hasOwnProperty(a.purpose)) by[a.purpose] += a.amount; });
+  by['Extended Teaching'] = getETAmountFromPayments([p]);
+  return by;
+}
+function _formOfClass(c) { var m = String(c).match(/^\s*(\d)/); return m ? m[1] : '0'; }
+function getClassPurposeTotals() {
+  var purposes = DB.purposes.map(function(p) { return p.name; }), yr = getActiveYearFilter();
+  var pays = DB.payments.filter(function(p) {
+    var yp = yr ? yr.split('/') : [];
+    var inYr = !yr || !p.date || (yp[0] && p.date.startsWith(yp[0])) || (yp[1] && p.date.startsWith(yp[1]));
+    return p.approvalStatus === 'confirmed' && inYr;
+  });
+  var byClass = {}; pays.forEach(function(p) { var c = p.class || '(no class)'; (byClass[c] = byClass[c] || []).push(p); });
+  var allocBy = {}; (DB.allocations || []).forEach(function(a) { (allocBy[a.paymentId] = allocBy[a.paymentId] || []).push(a); });
+  var rows = Object.keys(byClass).sort(classCmp).map(function(c) {
+    var list = byClass[c], by = {}; purposes.forEach(function(x) { by[x] = 0; });
+    list.forEach(function(p) { (allocBy[p.id] || []).forEach(function(a) { if (a.purpose !== 'Extended Teaching' && by.hasOwnProperty(a.purpose)) by[a.purpose] += a.amount; }); });
+    by['Extended Teaching'] = getETAmountFromPayments(list);
+    var total = list.reduce(function(t, p) { return t + (p.rawAmount || p.amount); }, 0), alloc = purposes.reduce(function(t, x) { return t + (by[x] || 0); }, 0);
+    return { cls: c, form: _formOfClass(c), by: by, total: total, unalloc: Math.max(0, Math.round((total - alloc) * 100) / 100), count: list.length };
+  });
+  return { purposes: purposes, rows: rows };
+}
+function _gh(n) { return n ? 'GHS ' + Number(n).toLocaleString() : '-'; }
+function exportClassPurposeTotals() {
+  var d = getClassPurposeTotals();
+  var data = [['Form', 'Class'].concat(d.purposes).concat(['Not yet allocated', 'TOTAL', 'Payments'])];
+  d.rows.forEach(function(r) { data.push(['Form ' + r.form, r.cls].concat(d.purposes.map(function(x) { return r.by[x] || 0; })).concat([r.unalloc, r.total, r.count])); });
+  toExcel(data, 'ASMaP_Totals_by_Class_and_Purpose');
+}
+function _classPurposeCard() {
+  var d = getClassPurposeTotals(); if (!d.rows.length) return '';
+  var forms = {}, grand = { by: {}, total: 0, unalloc: 0 }; d.purposes.forEach(function(x) { grand.by[x] = 0; });
+  d.rows.forEach(function(r) {
+    var f = forms[r.form] = forms[r.form] || { by: {}, total: 0, unalloc: 0, rows: [] };
+    d.purposes.forEach(function(x) { f.by[x] = (f.by[x] || 0) + (r.by[x] || 0); grand.by[x] += (r.by[x] || 0); });
+    f.total += r.total; f.unalloc += r.unalloc; grand.total += r.total; grand.unalloc += r.unalloc; f.rows.push(r);
+  });
+  var body = Object.keys(forms).sort(function(a, b) { return Number(b) - Number(a); }).map(function(k) {
+    var f = forms[k];
+    return '<tr style="background:var(--g5);font-weight:700"><td>' + (k === '0' ? 'Other' : 'Form ' + k) + ' total</td>' + d.purposes.map(function(x) { return '<td style="text-align:right">' + _gh(f.by[x]) + '</td>'; }).join('')
+      + '<td style="text-align:right">' + _gh(f.unalloc) + '</td><td style="text-align:right">' + _gh(f.total) + '</td></tr>'
+      + f.rows.map(function(r) { return '<tr><td style="padding-left:18px">' + _x(r.cls) + '</td>' + d.purposes.map(function(x) { return '<td style="text-align:right">' + _gh(r.by[x]) + '</td>'; }).join('')
+        + '<td style="text-align:right">' + _gh(r.unalloc) + '</td><td style="text-align:right"><strong>' + _gh(r.total) + '</strong></td></tr>'; }).join('');
+  }).join('');
+  return '<div class="card" id="class-purpose-card"><div class="ctitle"><span class="tic">&#129534;</span>Totals by form, class and purpose'
+    + '<button class="btn btn-outline btn-xs" style="margin-left:auto" onclick="exportClassPurposeTotals()">&#11015; Excel</button></div>'
+    + '<div style="font-size:11px;color:var(--textm);margin-bottom:8px">Confirmed payments only, for the year chosen above. These totals are by class, not by person, so they always equal the Home total.</div>'
+    + '<div class="twrap"><table><tr><th>Form / Class</th>' + d.purposes.map(function(x) { return '<th style="text-align:right">' + _x(x) + '</th>'; }).join('') + '<th style="text-align:right">Not yet allocated</th><th style="text-align:right">Total</th></tr>'
+    + body + '<tr style="font-weight:800;border-top:2px solid var(--g2)"><td>ALL FORMS</td>' + d.purposes.map(function(x) { return '<td style="text-align:right">' + _gh(grand.by[x]) + '</td>'; }).join('')
+    + '<td style="text-align:right">' + _gh(grand.unalloc) + '</td><td style="text-align:right">' + _gh(grand.total) + '</td></tr></table></div></div>';
+}
+function _collectorCard(cls) {
+  var all = visiblePurposes(), limited = all.length < DB.purposes.length, uid = currentUser && currentUser.id;
+  var pays = DB.payments.filter(function(p) { return p.class === cls && p.approvalStatus === 'confirmed'; }).sort(function(a, b) { return (b.ts || 0) - (a.ts || 0); });
+  if (!pays.length) return '';
+  function shown(p) { if (!limited) return p.rawAmount || p.amount; var by = _payPurposeAmounts(p); return all.reduce(function(t, x) { return t + (by[x] || 0); }, 0); }
+  function who(p) { var u = DB.users.find(function(x) { return x.id === p.recordedBy; }); return (u && u.name) || p.recordedByName || 'Unknown'; }
+  var per = {}; pays.forEach(function(p) { var k = who(p); per[k] = per[k] || { amt: 0, n: 0, me: p.recordedBy === uid }; per[k].amt += shown(p); per[k].n++; });
+  var chips = Object.keys(per).sort(function(a, b) { return per[b].amt - per[a].amt; }).map(function(k) {
+    return '<div style="flex:1;min-width:150px;background:var(--g5);border-radius:12px;padding:10px 12px"><div style="font-size:12px;font-weight:700">' + _x(k) + (per[k].me ? ' (you)' : '') + '</div><div style="font-size:16px;font-weight:800;color:var(--g1)">' + _gh(per[k].amt) + '</div><div style="font-size:10px;color:var(--textm)">' + per[k].n + ' payment' + (per[k].n === 1 ? '' : 's') + '</div></div>';
+  }).join('');
+  var rows = pays.slice(0, 400).map(function(p) {
+    return '<tr><td>' + _x(p.date || '') + '</td><td>' + _x(p.student) + '</td><td style="text-align:right">' + _gh(shown(p)) + '</td><td>' + _x(who(p)) + (p.recordedBy === uid ? ' <span class="badge bg">you</span>' : '') + '</td></tr>';
+  }).join('');
+  return '<div class="card"><div class="ctitle"><span class="tic">&#129534;</span>Who collected in ' + _x(cls) + '</div>'
+    + '<div style="font-size:11px;color:var(--textm);margin-bottom:8px">Every confirmed payment in this class and the person who recorded it' + (limited ? ' (amounts limited to the fee types cleared for you)' : '') + '. Money is credited only to the person who entered it.</div>'
+    + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">' + chips + '</div>'
+    + '<details><summary style="cursor:pointer;font-size:12px;font-weight:700;color:var(--g2)">Show all ' + pays.length + ' payments</summary><div class="twrap" style="max-height:50vh;overflow:auto;margin-top:8px"><table><tr><th>Date</th><th>Student</th><th style="text-align:right">Amount</th><th>Collected by</th></tr>' + rows + '</table></div></details></div>';
+}
+(function() {
+  var rr = window.renderReports;
+  if (typeof rr === 'function') window.renderReports = function() {
+    var r = rr.apply(this, arguments);
+    try {
+      if (currentUser && currentUser.role === 'admin') {
+        var el = document.getElementById('page-reports'), first = el && el.querySelector('.card');
+        if (first && !document.getElementById('class-purpose-card')) first.insertAdjacentHTML('afterend', _classPurposeCard());
+      }
+    } catch (e) {}
+    return r;
+  };
+  var rl = window.renderLedger;
+  if (typeof rl === 'function') window.renderLedger = function() {
+    var r = rl.apply(this, arguments);
+    try {
+      if (currentUser && currentUser.role !== 'viewer' && ledgerSelectedClass) {
+        var el = document.getElementById('page-ledger'), s = el && el.querySelector('#ledger-search'), anchor = s && s.parentNode && s.parentNode.nextElementSibling;
+        if (anchor) anchor.insertAdjacentHTML('afterend', _collectorCard(ledgerSelectedClass));
+      }
+    } catch (e) {}
+    return r;
+  };
+})();
+// ===================== end totals / collectors =====================
 </script>
 </body>
 </html>
