@@ -4795,6 +4795,16 @@ function renderViewerReports() {
       return { name:coord.name, classes:coord.classes||[], byPur:byPur, permTotal:coordPermTotal };
     }).filter(Boolean);
 
+    // Money in classes no coordinator covers (typically entered by admin) still counts: show it as its own row so the table reconciles with the cards above
+    var _covered = {};
+    coords.forEach(function(c){ (c.classes||[]).forEach(function(k){ _covered[k] = true; }); });
+    var _otherPays = confirmedPays.filter(function(p){ return !_covered[p.class]; });
+    if (_otherPays.length) {
+      var _oIds = _otherPays.map(function(p){ return p.id; }), _oBy = {}, _oTot = 0;
+      visiblePurposes.forEach(function(purName) { var a = getPurAmt(_oIds, purName); _oBy[purName] = a; _oTot += a; });
+      if (_oTot > 0) coordRows.push({ name:'Admin / other entries', classes:['classes with no coordinator'], byPur:_oBy, permTotal:_oTot });
+    }
+
     // Grand total row per purpose
     var grandByPur = {};
     visiblePurposes.forEach(function(purName) {
@@ -5018,6 +5028,18 @@ function exportViewerCoordReport() {
     var total = purAmts.reduce(function(s,v){ return s+v; },0);
     rows.push([coord.name, (coord.classes||[]).join(', ')].concat(purAmts).concat([total]));
   });
+  var _cov = {};
+  coords.forEach(function(c){ (c.classes||[]).forEach(function(k){ _cov[k] = true; }); });
+  var _oth = confirmedPays.filter(function(p){ return !_cov[p.class]; });
+  if (_oth.length) {
+    var _ids = _oth.map(function(p){ return p.id; });
+    var _oa = visiblePurposes.map(function(purName) {
+      if (purName === 'Extended Teaching') return getETAmountFromPayments(_oth);
+      return (DB.allocations||[]).filter(function(a){ return _ids.includes(a.paymentId) && a.purpose===purName; }).reduce(function(s,a){ return s+a.amount; }, 0);
+    });
+    var _ot = _oa.reduce(function(s,v){ return s+v; },0);
+    if (_ot > 0) rows.push(['Admin / other entries', 'classes with no coordinator'].concat(_oa).concat([_ot]));
+  }
   toExcel(rows, 'Superintendent_Collections_'+(DB.settings.activeYear||'').replace('/','_'));
   showToast('Report exported \u2713','success');
 }
@@ -5050,12 +5072,20 @@ function renderViewerDashboard() {
     var total = confirmedPays.reduce(function(s2,p){ return s2+(p.rawAmount||p.amount); },0);
     cards += '<div class="scard blue"><div class="sval">GHS ' + total.toLocaleString() + '</div><div class="slbl">Total collected</div></div>';
     cards += '<div class="scard"><div class="sval">' + confirmedPays.length + '</div><div class="slbl">Confirmed payments</div></div>';
-  } else if (perms.includes('et')) {
-    // Show only ET total when they only have ET permission
-    var confirmedPays2 = DB.payments.filter(function(p){ return p.approvalStatus==='confirmed'; });
-    var etTotal = getETAmountFromPayments(confirmedPays2);
-    cards += '<div class="scard blue"><div class="sval">GHS ' + etTotal.toLocaleString() + '</div><div class="slbl">ET collected</div></div>';
-    cards += '<div class="scard"><div class="sval">' + confirmedPays2.length + '</div><div class="slbl">Confirmed payments</div></div>';
+  } else if (purposesFromTokens(perms).length) {
+    // Clearance: without 'totals', show ONLY the purposes ticked for this person, and count only payments that carry those purposes
+    var _cp = purposesFromTokens(perms);
+    var _conf = DB.payments.filter(function(p){ return p.approvalStatus==='confirmed'; });
+    var _amtFor = function(pays, n) {
+      if (n === 'Extended Teaching') return getETAmountFromPayments(pays);
+      var ids = pays.map(function(p){ return p.id; });
+      return (DB.allocations||[]).filter(function(a){ return ids.indexOf(a.paymentId) >= 0 && a.purpose === n; }).reduce(function(t,a){ return t + a.amount; }, 0);
+    };
+    _cp.forEach(function(n, i) {
+      cards += '<div class="scard' + (i === 0 ? ' blue' : '') + '"><div class="sval">GHS ' + _amtFor(_conf, n).toLocaleString() + '</div><div class="slbl">' + _x(n) + ' collected</div></div>';
+    });
+    var _nPay = _conf.filter(function(p){ return _cp.some(function(n){ return _amtFor([p], n) > 0; }); }).length;
+    cards += '<div class="scard"><div class="sval">' + _nPay + '</div><div class="slbl">Payments (your clearance)</div></div>';
   }
   if (perms.includes('attendance') || perms.includes('payroll')) {
     var appAtt = DB.attendance.filter(function(a){ return a.approvalStatus==='approved'; });
