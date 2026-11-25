@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>ASMaP — Oguaa SHS</title>
+<link rel="preconnect" href="https://wwcvvnscekpdrtadqgjs.supabase.co" crossorigin>
+<link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#0a3d1f">
 <meta name="mobile-web-app-capable" content="yes">
@@ -14,8 +16,8 @@
 <link rel="icon" href="/favicon.ico" sizes="any">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Playfair+Display:wght@700;800&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <style>
 :root {
   --g1:#0a3d1f; --g2:#1a6b3c; --g3:#2d9558; --g4:#4db876; --g5:#e8f5ee;
@@ -611,18 +613,43 @@ async function sbGet(table, params='') {
   // a stable order (ending in id) is needed so no row is skipped or repeated between pages
   if (!om) base += (base ? '&' : '') + 'order=id';
   else if (!om[1].split(',').some(function(t) { return t.split('.')[0] === 'id'; })) base = base.replace(/(^|&)order=([^&]*)/, '$1order=$2,id');
-  var out = [], off = 0;
+  // Page 1 also tells us the total (Content-Range), so every remaining page can then be fetched at the same time
+  var out = [], off = 0, total = -1;
+  try {
+    var fr = await fetch(`${SUPA_URL}/rest/v1/${table}?${base}&limit=1000&offset=0`, { headers: Object.assign({}, HDR, { 'Prefer': 'count=exact' }) });
+    if (!fr.ok) { console.error('sbGet FAILED', table, fr.status, await fr.text()); return []; }
+    out = await fr.json(); off = out.length;
+    var cr = fr.headers.get('content-range'); total = cr && /\/(\d+)$/.exec(cr) ? parseInt(/\/(\d+)$/.exec(cr)[1], 10) : -1;
+    if (out.length >= want) return out.slice(0, want);
+    if (total >= 0 && out.length === Math.min(1000, total) && total > out.length) {
+      var goal = Math.min(total, want), jobs = [];
+      for (var o = 1000; o < goal; o += 1000) {
+        (function(offset) {
+          jobs.push(fetch(`${SUPA_URL}/rest/v1/${table}?${base}&limit=${Math.min(1000, goal - offset)}&offset=${offset}`, { headers: HDR })
+            .then(function(pr) { if (!pr.ok) throw new Error(String(pr.status)); return pr.json(); }));
+        })(o);
+      }
+      try { (await Promise.all(jobs)).forEach(function(rows) { out = out.concat(rows); }); return out; }
+      catch (pe) {
+        console.error('sbGet FAILED', table, pe);
+        if (typeof showToast === 'function') showToast('Only part of "' + table + '" could be loaded. Refresh to try again.', 'warning');
+        return out.slice(0, 1000);
+      }
+    }
+    if (total >= 0 && total <= out.length) return out;
+  } catch (e) { throw e; }
+  // Fallback (total unknown or server returns smaller pages): read the rest one page after another
   while (out.length < want) {
     var take = Math.min(1000, want - out.length);
-    var pr = await fetch(`${SUPA_URL}/rest/v1/${table}?${base}&limit=${take}&offset=${off}`, { headers: HDR });
-    if (!pr.ok) {
-      console.error('sbGet FAILED', table, pr.status, await pr.text());
+    var pr2 = await fetch(`${SUPA_URL}/rest/v1/${table}?${base}&limit=${take}&offset=${off}`, { headers: HDR });
+    if (!pr2.ok) {
+      console.error('sbGet FAILED', table, pr2.status, await pr2.text());
       if (off > 0 && typeof showToast === 'function') showToast('Only part of "' + table + '" could be loaded. Refresh to try again.', 'warning');
       return out;
     }
-    var rows = await pr.json(); out = out.concat(rows);
-    if (rows.length < take) break;
-    off += rows.length;
+    var rows2 = await pr2.json(); out = out.concat(rows2);
+    if (!rows2.length || (total >= 0 ? out.length >= total : rows2.length < take)) break;
+    off += rows2.length;
   }
   return out;
 }
@@ -753,8 +780,20 @@ async function saveDB() {
 async function syncFromSupabase(silent=false) {
   if (!silent) showSyncStatus('Connecting to database…');
   try {
+    // Start every read at once (they used to run one after another, which is what made sign-in take 20-90 seconds)
+    var _go = function(pr) { pr.catch(function(){}); return pr; };
+    var _pCfg = _go(sbGet('app_config', 'key=eq.main'));
+    var _pProf = _go(sbGet('profiles', 'select=*&order=created_at'));
+    var _pStud = _go(sbGet('students', 'select=*&order=full_name&limit=5000'));
+    var _pAtt = _go(sbGet('attendance', 'select=*&order=created_at.desc&limit=20000'));
+    var _pSrcP = _go(_paymentsSource());
+    var _pPays = _go(_pSrcP.then(function(src) { return sbGet(src, 'select=*&order=created_at.desc&limit=20000'); }));
+    var _pAllows = _go(sbGet('allowances', 'select=*&order=created_at.desc'));
+    var _pAllocs = _go(sbGet('payment_allocations', 'select=*&order=created_at.desc&limit=20000'));
+    var _pInst = _go(_pSrcP.then(function(src) { return src === 'payments_cleared' ? [] : sbGet('payment_installments', 'select=*&order=date.desc&limit=20000'); }));
+    var _pAud = _go(sbGet('audit_log', 'select=*&order=created_at.desc&limit=200'));
     // Config
-    const cfg = await sbGet('app_config', 'key=eq.main');
+    const cfg = await _pCfg;
     if (cfg && cfg[0]) {
       const c = cfg[0];
       if (c.settings)     DB.settings     = {...DEFAULT_SETTINGS, ...c.settings};
@@ -767,10 +806,10 @@ async function syncFromSupabase(silent=false) {
       if (c.purposes)     DB.purposes     = c.purposes;
     }
     // Users
-    const profs = await sbGet('profiles', 'select=*&order=created_at');
+    const profs = await _pProf;
     if (profs && profs.length) DB.users = profs.map(mapProfile);
     // Students
-    const studs = await sbGet('students', 'select=*&order=full_name&limit=5000');
+    const studs = await _pStud;
     // Always load students from Supabase - it is the source of truth
     // The import functions pause the timer during writes so sync won't fire during import
     if (studs && studs.length > 0) {
@@ -792,7 +831,7 @@ async function syncFromSupabase(silent=false) {
       }));
     }
     // Attendance
-    const att = await sbGet('attendance', 'select=*&order=created_at.desc&limit=20000');
+    const att = await _pAtt;
     if (att && att.length >= DB.attendance.length) DB.attendance = att.map(a=>({
       id:a.id, teacher:a.teacher_name, class:a.class_name, subject:a.subject_name,
       period:a.period, date:a.date, status:a.status, attType:a.att_type||'normal',
@@ -801,8 +840,8 @@ async function syncFromSupabase(silent=false) {
       recordedBy:a.recorded_by, recordedByName:a.recorded_by_name||'', ts:new Date(a.created_at).getTime()
     }));
     // Payments
-    var _paySrc = await _paymentsSource();
-    const pays = await sbGet(_paySrc, 'select=*&order=created_at.desc&limit=20000');
+    var _paySrc = await _pSrcP;
+    const pays = await _pPays;
     // Only replace if Supabase has at least as many records as local (prevents overwrite on import).
     // The cleared view can legitimately hold fewer rows than were kept locally, so it replaces unless a failed read gave nothing.
     if (pays && (_paySrc === 'payments_cleared' ? (pays.length > 0 || DB.payments.length === 0) : pays.length >= DB.payments.length)) DB.payments = pays.map(p=>({
@@ -817,26 +856,26 @@ async function syncFromSupabase(silent=false) {
       ts:new Date(p.created_at).getTime()
     }));
     // Allowances
-    const allows = await sbGet('allowances', 'select=*&order=created_at.desc');
+    const allows = await _pAllows;
     if (allows) DB.allowances = allows.map(a=>({
       id:a.id, teacher:a.teacher_name, type:a.allowance_type,
       amount:parseFloat(a.amount), note:a.note||'', addedBy:a.added_by, ts:new Date(a.created_at).getTime()
     }));
     // Allocations
-    const allocs = await sbGet('payment_allocations', 'select=*&order=created_at.desc&limit=20000');
+    const allocs = await _pAllocs;
     if (allocs && allocs.length >= 0) DB.allocations = allocs.map(a=>({
       id:a.id, paymentId:a.payment_id, student:a.student_name, class:a.class_name,
       purpose:a.purpose, amount:parseFloat(a.amount), settledBy:a.settled_by,
       settledAt:a.settled_at, ts:new Date(a.created_at).getTime()
     }));
     // Installments
-    const installs = _paySrc === 'payments_cleared' ? [] : await sbGet('payment_installments', 'select=*&order=date.desc&limit=20000');
+    const installs = await _pInst;
     if (installs && installs.length >= 0) DB.installments = installs.map(i=>({
       id:i.id, student:i.student_name, class:i.class_name, amount:parseFloat(i.amount),
       date:i.date, recordedBy:i.recorded_by, recordedByName:i.recorded_by_name
     }));
     // Audit
-    const aud = await sbGet('audit_log', 'select=*&order=created_at.desc&limit=200');
+    const aud = await _pAud;
     if (aud) DB.audit = aud.map(a=>({
       id:a.id, userId:a.user_id, userName:a.user_name,
       action:a.action, details:a.details||'', ts:new Date(a.created_at).getTime()
@@ -969,7 +1008,7 @@ var _lastInput = 0;
   document.addEventListener(ev, function(e) { var t = e.target; if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) _lastInput = Date.now(); }, true);
 });
 async function silentRefresh() {
-  if (!currentUser) return;
+  if (!currentUser || document.hidden) return;
   if (!(await ensureFreshToken())) { showToast('Session expired. Please sign in again.', 'warning'); doLogout(); return; }
   try {
     await syncFromSupabase(true);
@@ -4781,7 +4820,8 @@ function renderViewerReports() {
     // ── 2. Collections by Coordinator — scoped to visible purposes
     var coords = DB.users.filter(function(u){ return u.role==='coordinator'; });
     var coordRows = coords.map(function(coord) {
-      var myPays = confirmedPays.filter(function(p){ return (coord.classes||[]).includes(p.class); });
+      // Credit each payment to the person who RECORDED it (not to everyone assigned to the class)
+      var myPays = confirmedPays.filter(function(p){ return _isCollectedBy(p, coord); });
       if (!myPays.length) return null;
       var myIds = myPays.map(function(p){ return p.id; });
       var byPur = {};
@@ -4792,17 +4832,15 @@ function renderViewerReports() {
         coordPermTotal += amt;
       });
       if (coordPermTotal === 0) return null;
-      return { name:coord.name, classes:coord.classes||[], byPur:byPur, permTotal:coordPermTotal };
+      return { name:coord.name, classes:_collectedClasses(myPays), byPur:byPur, permTotal:coordPermTotal };
     }).filter(Boolean);
 
-    // Money in classes no coordinator covers (typically entered by admin) still counts: show it as its own row so the table reconciles with the cards above
-    var _covered = {};
-    coords.forEach(function(c){ (c.classes||[]).forEach(function(k){ _covered[k] = true; }); });
-    var _otherPays = confirmedPays.filter(function(p){ return !_covered[p.class]; });
+    // Money entered by the admin or anyone who is not a coordinator (e.g. bulk imports) still counts: show it as its own row so the table reconciles with the cards above
+    var _otherPays = confirmedPays.filter(function(p){ return !coords.some(function(c){ return _isCollectedBy(p, c); }); });
     if (_otherPays.length) {
       var _oIds = _otherPays.map(function(p){ return p.id; }), _oBy = {}, _oTot = 0;
       visiblePurposes.forEach(function(purName) { var a = getPurAmt(_oIds, purName); _oBy[purName] = a; _oTot += a; });
-      if (_oTot > 0) coordRows.push({ name:'Admin / other entries', classes:['classes with no coordinator'], byPur:_oBy, permTotal:_oTot });
+      if (_oTot > 0) coordRows.push({ name:'Admin / other entries', classes:_collectedClasses(_otherPays), byPur:_oBy, permTotal:_oTot });
     }
 
     // Grand total row per purpose
@@ -5014,10 +5052,10 @@ function exportViewerCoordReport() {
   var confirmedPays = DB.payments.filter(function(p){ return p.approvalStatus==='confirmed'; });
   var coords = DB.users.filter(function(u){ return u.role==='coordinator'; });
 
-  var headers = ['Coordinator','Assigned Classes'].concat(visiblePurposes).concat(['TOTAL']);
+  var headers = ['Coordinator','Collected In (classes)'].concat(visiblePurposes).concat(['TOTAL']);
   var rows = [headers];
   coords.forEach(function(coord) {
-    var myPays = confirmedPays.filter(function(p){ return (coord.classes||[]).includes(p.class); });
+    var myPays = confirmedPays.filter(function(p){ return _isCollectedBy(p, coord); });
     if (!myPays.length) return;
     var myIds = myPays.map(function(p){ return p.id; });
     var purAmts = visiblePurposes.map(function(purName) {
@@ -5026,11 +5064,9 @@ function exportViewerCoordReport() {
         .reduce(function(s,a){ return s+a.amount; }, 0);
     });
     var total = purAmts.reduce(function(s,v){ return s+v; },0);
-    rows.push([coord.name, (coord.classes||[]).join(', ')].concat(purAmts).concat([total]));
+    rows.push([coord.name, _collectedClasses(myPays).join(', ')].concat(purAmts).concat([total]));
   });
-  var _cov = {};
-  coords.forEach(function(c){ (c.classes||[]).forEach(function(k){ _cov[k] = true; }); });
-  var _oth = confirmedPays.filter(function(p){ return !_cov[p.class]; });
+  var _oth = confirmedPays.filter(function(p){ return !coords.some(function(c){ return _isCollectedBy(p, c); }); });
   if (_oth.length) {
     var _ids = _oth.map(function(p){ return p.id; });
     var _oa = visiblePurposes.map(function(purName) {
@@ -5038,7 +5074,7 @@ function exportViewerCoordReport() {
       return (DB.allocations||[]).filter(function(a){ return _ids.includes(a.paymentId) && a.purpose===purName; }).reduce(function(s,a){ return s+a.amount; }, 0);
     });
     var _ot = _oa.reduce(function(s,v){ return s+v; },0);
-    if (_ot > 0) rows.push(['Admin / other entries', 'classes with no coordinator'].concat(_oa).concat([_ot]));
+    if (_ot > 0) rows.push(['Admin / other entries', _collectedClasses(_oth).join(', ')].concat(_oa).concat([_ot]));
   }
   toExcel(rows, 'Superintendent_Collections_'+(DB.settings.activeYear||'').replace('/','_'));
   showToast('Report exported \u2713','success');
