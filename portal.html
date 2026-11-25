@@ -214,7 +214,7 @@ function sem(){var n=new Date(),y=n.getFullYear(),m=n.getMonth()+1,ay=m>=9?(y+'_
 function goScreen(id){document.querySelectorAll('.screen').forEach(function(s){s.classList.remove('active');});document.getElementById(id).classList.add('active');window.scrollTo(0,0);}
 function showErr(id,msg){var e=document.getElementById(id);if(e){e.textContent=msg;e.style.display='block';}}
 function hideErr(id){var e=document.getElementById(id);if(e)e.style.display='none';}
-function logout(){STUDENT=null;document.getElementById('name-inp').value='';document.getElementById('cand-box').innerHTML='';document.getElementById('dob-box').style.display='none';document.getElementById('dob-inp').value='';PICK=null;CANDS=[];document.getElementById('pin-inp').value='';goScreen('s-lookup');}
+function logout(){STUDENT=null;CLAIM=null;PAID=false;document.getElementById('name-inp').value='';document.getElementById('cand-box').innerHTML='';document.getElementById('dob-box').style.display='none';document.getElementById('dob-inp').value='';PICK=null;CANDS=[];document.getElementById('pin-inp').value='';goScreen('s-lookup');}
 
 function openTranscript(){window.open(TRANSCRIPT_URL,'_blank','noopener,noreferrer');}
 async function loadCfg(){
@@ -226,7 +226,7 @@ async function loadCfg(){
 
 // SCREEN 1: name -> choose your ward (class and last digits of the BECE number help tell similar names apart) -> date of birth
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
-var CANDS=[], PICK=null;
+var CANDS=[], PICK=null, CLAIM=null, PAID=false;
 async function searchName(){
   var name=(document.getElementById('name-inp').value||'').trim().toUpperCase();
   hideErr('e-lookup');PICK=null;document.getElementById('dob-box').style.display='none';document.getElementById('cand-box').innerHTML='';
@@ -263,7 +263,7 @@ async function verifyDob(){
     if(d.error==='expired'){showErr('e-lookup','This search has expired. Please search again.');PICK=null;document.getElementById('dob-box').style.display='none';return;}
     if(d.error==='nodob'){showErr('e-lookup','Your ward\'s date of birth is not yet recorded. Please contact the school office: 0241557824 / 0542322727');return;}
     if(d.error==='mismatch'||!d.student){showErr('e-lookup','That date of birth does not match our records. Please check it and try again.');return;}
-    STUDENT=d.student;document.getElementById('dob-inp').value='';buildPayScreen(STUDENT);goScreen('s-pay');
+    STUDENT=d.student;CLAIM={h:PICK.h,dob:dob};PAID=(d.paid===true);document.getElementById('dob-inp').value='';buildPayScreen(STUDENT);goScreen('s-pay');
   }catch(e){showErr('e-lookup','Connection error. Check your internet and try again.');}
   finally{btn.textContent='Continue →';btn.disabled=false;}
 }
@@ -280,8 +280,32 @@ function buildPayScreen(s){
     +'<div class="pr"><span>Semester</span><span>'+s2.replace(/_/g,' ')+'</span></div>'
     +'<div class="pr"><span>Views</span><span>2 views</span></div>'
     +'<div class="pr"><span><strong>Total</strong></span><span><strong>GHS '+FEE.toFixed(2)+'</strong></span></div>';
+  var pb=document.getElementById('paid-box');
+  if(!pb){pb=document.createElement('div');pb.id='paid-box';var psm=document.getElementById('pay-sum');psm.parentNode.insertBefore(pb,psm.nextSibling);}
+  var payBtn=document.getElementById('btn-pay'),payPh=document.getElementById('pay-phone'),phg=payPh?payPh.parentNode:null;
+  if(PAID){
+    pb.innerHTML='<div class="alert a-green" style="display:block">✅ Access for this semester has already been paid (on the transcript site or at the school office). You do not need to pay again.</div><button class="btn btn-g" id="btn-claim" onclick="claimPin()">Get my PIN →</button>';
+    if(payBtn)payBtn.style.display='none';if(phg)phg.style.display='none';
+  }else{pb.innerHTML='';if(payBtn)payBtn.style.display='';if(phg)phg.style.display='';}
 }
 
+async function claimPin(){
+  hideErr('e-pay');if(!CLAIM)return;
+  var btn=document.getElementById('btn-claim');btn.textContent='Please wait…';btn.disabled=true;
+  try{
+    var d=await pcall({action:'claim',h:CLAIM.h,dob:CLAIM.dob});
+    if(d.pin){
+      CLAIM=null;document.getElementById('pin-inp').value=d.pin;
+      document.getElementById('paid-box').innerHTML='<div class="alert a-green" style="display:block">Your PIN is <strong style="font-size:20px;letter-spacing:2px">'+esc(d.pin)+'</strong><br>Please write it down. It gives 2 views of the report this semester.</div><button class="btn btn-g" onclick="goScreen(\'s-pin\')">Continue to the report →</button>';
+      return;
+    }
+    if(d.error==='notpaid')showErr('e-pay','We could not find a payment for this semester. Please pay below or contact the school office: 0241557824 / 0542322727');
+    else if(d.error==='rate'||d.error==='locked')showErr('e-pay','Too many attempts. Please wait and try again, or contact the school office: 0241557824 / 0542322727');
+    else if(d.error==='expired'){showErr('e-pay','This session has expired. Please search for your ward again.');}
+    else showErr('e-pay','Something went wrong. Please try again or contact the school office.');
+  }catch(e){showErr('e-pay','Connection error. Check your internet and try again.');}
+  finally{if(btn){btn.textContent='Get my PIN →';btn.disabled=false;}}
+}
 async function pay(){
   var phone=(document.getElementById('pay-phone').value||'').trim();
   hideErr('e-pay');
@@ -340,14 +364,16 @@ async function checkPin(){
   try{
     var res=await pcall({action:'report',pin:pin});
     if(res.error==='rate'){showErr('e-pin','Too many attempts. Please wait a few minutes and try again.');return;}
+    if(res.limit){showErr('e-pin','PIN limit reached (2 views) for this semester.\nPay for new access or contact school: 0241557824 / 0542322727');return;}
     var d=res.student?[res.student]:[];
     if(!d||!d.length){showErr('e-pin','PIN not found or not activated.\nIf you just paid, wait a moment and retry.\nSchool office: 0241557824 / 0542322727');return;}
     var s=d[0];
-    var uk='portal_'+pin+'_'+sem();
-    var uses=parseInt(localStorage.getItem(uk)||'0');
-    if(uses>=2){showErr('e-pin','PIN limit reached (2 views) for this semester.\nPay for new access or contact school: 0241557824 / 0542322727');return;}
-    localStorage.setItem(uk,String(uses+1));
-    await showReport(s,uses+1,res);
+    var vn;
+    if(res.views&&res.views.used){vn=res.views.used;}
+    else{var uk='portal_'+pin+'_'+sem();var uses=parseInt(localStorage.getItem(uk)||'0');
+      if(uses>=2){showErr('e-pin','PIN limit reached (2 views) for this semester.\nPay for new access or contact school: 0241557824 / 0542322727');return;}
+      localStorage.setItem(uk,String(uses+1));vn=uses+1;}
+    await showReport(s,vn,res);
   }catch(e){showErr('e-pin','Connection error. Check internet and try again.');}
   finally{btn.textContent='View Report →';btn.disabled=false;}
 }

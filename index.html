@@ -421,7 +421,7 @@ input[type=text]:focus,input[type=number]:focus,input[type=date]:focus,input[typ
       <input type="password" id="lp" placeholder="Enter password" autocomplete="current-password">
     </div>
     <button class="btn btn-primary" onclick="doLogin()">Sign In →</button>
-    <p style="text-align:center;font-size:11px;color:var(--textm);margin-top:14px;">Adombra School Management &amp; Analytics Platform · v1.0 · build 12Nov-a</p>
+    <p style="text-align:center;font-size:11px;color:var(--textm);margin-top:14px;">Adombra School Management &amp; Analytics Platform · v1.0 · build 24Nov-b</p>
     <div id="conn-result" style="margin-top:8px;font-size:12px;text-align:center;display:none"></div>
   </div>
 </div>
@@ -5689,7 +5689,7 @@ function renderSettings() {
 
   // App info
   html += '<div style="text-align:center;padding:16px;color:var(--textm);font-size:11px">'
-    + 'ASMaP \u00b7 Adombra School Management &amp; Analytics Platform \u00b7 v1.0 · build 12Nov-a<br>'
+    + 'ASMaP \u00b7 Adombra School Management &amp; Analytics Platform \u00b7 v1.0 · build 24Nov-b<br>'
     + s.schoolName + ' \u00b7 ' + s.schoolLocation + '</div>';
 
   el.innerHTML = html;
@@ -6038,7 +6038,7 @@ function ptaaCount() {
 
 
 var TT_ERR = '', TT = null, TT_IDX = null, TT_FIXED = ['WSHP', 'CO-CUR', 'PLC /  VLC'];
-function _x(v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'); }
+function _x(v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
 function _mins(s) { var a = String(s).split(':'); return (+a[0]) * 60 + (+a[1]); }
 function _tName(id) { var t = TT_IDX.t[id]; return t ? (t.s || t.n) : '?'; }
 function _isFixed(s) { var sb = TT_IDX.s[s.sub]; return !sb || TT_FIXED.indexOf(sb.s) >= 0; }
@@ -7639,6 +7639,7 @@ function renderSMS() {
     + '</div>'
 
     + '<div class="fgrp"><label>MESSAGE <span id="sms-charcount" style="font-weight:400;color:var(--textm)">(0/160 — 1 SMS)</span></label>'
+    + '<select id="sms-tpl" onchange="smsTemplate(this.value)" style="width:100%;margin-bottom:8px;padding:9px;border:1.5px solid var(--grayb);border-radius:8px;font-size:13px"><option value="">Quick templates (optional)</option><option value="fees">Fee reminder</option><option value="report">Report ready</option><option value="pta">PTA meeting</option><option value="reopen">School reopening</option><option value="absent">Absence notice</option></select>'
     + '<textarea id="sms-body" oninput="smsCharCount()" style="width:100%;height:100px;padding:10px;border:1.5px solid var(--grayb);border-radius:8px;font-family:inherit;font-size:13px;resize:vertical" placeholder="Type your message here…"></textarea></div>'
 
     + '<div id="sms-preview" style="background:var(--g5);border-radius:8px;padding:10px;font-size:12px;color:var(--g1);margin-bottom:10px;display:none">'
@@ -7850,6 +7851,7 @@ function generatePortalPin(studentId) {
   s.portalPin = pin;
   s.portalUnlocked = true;
   sbPatch('students', studentId, { portal_pin: pin, portal_unlocked: true }).then(function() {
+    _recordPortalAccess(s, 'office');
     showToast('PIN generated: ' + pin, 'success');
     smsResultSearch();
   });
@@ -11096,6 +11098,94 @@ function _coordHomeSplit() {
   };
 })();
 // ===================== end coordinator home =====================
+
+// ===================== DEPLOYMENT CHECK, SHARED "PAID ONCE" RECORD, TEMPLATES, INPUT SAFETY =====================
+var ASMAP_BUILD = '24Nov-b';
+async function _callFn(name, body) {
+  var h = Object.assign({}, HDR, { 'Content-Type': 'application/json' }); delete h.Prefer;
+  var r = await fetch(SUPA_URL + '/functions/v1/' + name, { method: 'POST', headers: h, body: JSON.stringify(body) });
+  var j = {}; try { j = await r.json(); } catch (e) {}
+  return { status: r.status, body: j };
+}
+async function runDeploymentCheck() {
+  var out = document.getElementById('dep-check-out'); if (!out) return;
+  out.innerHTML = '<div style="font-size:12px;color:var(--textm)">Checking…</div>';
+  var rows = [['This app (index.html)', true, 'build ' + ASMAP_BUILD + ' is running']];
+  try {
+    var pd = await _callFn('portal-data', { action: 'version' });
+    var v = pd.body && pd.body.version;
+    rows.push(['portal-data function', !!(v && v.indexOf('v3') >= 0), v ? v : 'OLD version (no name search). Paste portal-data-index.ts and deploy']);
+  } catch (e) { rows.push(['portal-data function', false, 'Could not reach it: ' + e.message]); }
+  try {
+    var sm = await _callFn('send-sms', { action: 'version' });
+    var v2 = sm.body && sm.body.version;
+    rows.push(['send-sms function', !!(v2 && v2.indexOf('v2') >= 0), v2 ? v2 : (sm.status === 401 ? 'Sign in again, then re-run' : 'OLD version (no role limits). Paste send-sms-index.ts and deploy')]);
+  } catch (e) { rows.push(['send-sms function', false, 'Could not reach it: ' + e.message]); }
+  try {
+    var pt = await (await fetch('portal.html', { cache: 'no-store' })).text();
+    rows.push(['portal.html page', pt.indexOf('claimPin') >= 0, pt.indexOf('claimPin') >= 0 ? 'latest (paid-once + 2-view limit)' : 'OLD page. Upload the new portal.html']);
+  } catch (e) { rows.push(['portal.html page', false, 'Could not load it']); }
+  try {
+    var pa = await fetch(SUPA_URL + '/rest/v1/portal_access?select=id&limit=1', { headers: HDR });
+    rows.push(['portal_access table (24_portal_access.sql)', pa.ok, pa.ok ? 'present' : 'missing: run 24_portal_access.sql']);
+  } catch (e) { rows.push(['portal_access table (24_portal_access.sql)', false, 'missing: run 24_portal_access.sql']); }
+  rows.push(['Transcript site (Render)', null, 'cannot be checked from here: open Render > your service > Events and confirm the latest deploy shows the new app.py and db.py']);
+  out.innerHTML = rows.map(function(r) {
+    return '<div style="display:flex;gap:8px;padding:7px 0;border-bottom:1px solid var(--grayl);font-size:13px"><span>' + (r[1] === true ? '&#9989;' : r[1] === false ? '&#10060;' : '&#8505;&#65039;') + '</span><div><strong>' + _x(r[0]) + '</strong><div style="font-size:11px;color:var(--textm)">' + _x(r[2]) + '</div></div></div>';
+  }).join('');
+}
+function _portalSem() { var n = new Date(), y = n.getFullYear(), m = n.getMonth() + 1; return (m >= 9 ? y + '_' + (y + 1) : (y - 1) + '_' + y) + '_' + (m >= 9 ? 'T1' : m <= 4 ? 'T2' : 'T3'); }
+function _portalAccessKey(st) {
+  var d = String(st.dob || '').slice(0, 10); if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return '';
+  return String(st.name || '').toUpperCase().replace(/[^A-Z0-9 ]+/g, ' ').split(/\s+/).filter(Boolean).sort().join(' ') + '|' + d;
+}
+async function _recordPortalAccess(st, source) {   // so the transcript site will not charge this child again this semester
+  try {
+    var k = _portalAccessKey(st); if (!k) return;
+    await fetch(SUPA_URL + '/rest/v1/portal_access?on_conflict=key,semester', { method: 'POST', headers: Object.assign({}, HDR, { Prefer: 'resolution=ignore-duplicates,return=minimal' }),
+      body: JSON.stringify({ key: k, semester: _portalSem(), source: source, reference: '', amount_ghs: Number((DB.settings && DB.settings.portalFee) || 12), student_ref: String(st.id) }) });
+  } catch (e) {}
+}
+var _SMS_TPL = {
+  fees: 'OGUAA SHTS: Dear Parent, kindly clear your ward\'s outstanding school fees. Thank you.',
+  report: 'OGUAA SHTS: Your ward\'s report is ready. View it at ' + location.host + '/portal . Thank you.',
+  pta: 'OGUAA SHTS: PTA meeting on [date] at [time], [venue]. Your attendance is important.',
+  reopen: 'OGUAA SHTS: School reopens on [date]. Students should report in full uniform.',
+  absent: 'OGUAA SHTS: Your ward was absent from school today. Please contact the school office.'
+};
+function smsTemplate(k) {
+  var t = document.getElementById('sms-body'); if (!t || !_SMS_TPL[k]) return;
+  t.value = _SMS_TPL[k]; if (typeof smsCharCount === 'function') smsCharCount();
+}
+// Input safety: names and notes can never carry page code. Angle brackets and control characters are removed from stored text.
+var _SAN_RE = /[<>\u0000-\u0008\u000B\u000C\u000E-\u001F]/;
+function _sanWalk(o, d) {
+  if (!o || d > 4) return;
+  var keys = Array.isArray(o) ? o.map(function(_, i) { return i; }) : Object.keys(o);
+  keys.forEach(function(k) {
+    var v = o[k];
+    if (typeof v === 'string') { if (_SAN_RE.test(v)) o[k] = v.replace(/[<>\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, ''); }
+    else if (v && typeof v === 'object') _sanWalk(v, d + 1);
+  });
+}
+function _sanitizeDB() {
+  try { Object.keys(DB).forEach(function(k) { if (k !== 'settings' && k !== 'paySettings' && DB[k] && typeof DB[k] === 'object') _sanWalk(DB[k], 0); }); } catch (e) {}
+}
+(function() {
+  var rp = window.renderPage;
+  if (typeof rp === 'function') window.renderPage = function() { _sanitizeDB(); return rp.apply(this, arguments); };
+  var rs = window.renderSettings;
+  if (typeof rs === 'function') window.renderSettings = function() {
+    var r = rs.apply(this, arguments);
+    try {
+      var el = document.getElementById('page-settings');
+      if (el && currentUser && currentUser.role === 'admin' && !document.getElementById('dep-check-card'))
+        el.insertAdjacentHTML('beforeend', '<div class="card" id="dep-check-card"><div class="ctitle"><span class="tic">&#128269;</span>Deployment check</div><div style="font-size:12px;color:var(--textm);margin-bottom:8px">Shows which parts of the system are running the latest version. Build ' + ASMAP_BUILD + '.</div><button class="btn btn-outline btn-sm" onclick="runDeploymentCheck()">Run deployment check</button><div id="dep-check-out" style="margin-top:10px"></div></div>');
+    } catch (e) {}
+    return r;
+  };
+})();
+// ===================== end =====================
 </script>
 </body>
 </html>

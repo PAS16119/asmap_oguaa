@@ -1,4 +1,4 @@
-// Supabase Edge Function: portal-data  (v2, matches portal.html: config / search / verify / report)
+// Supabase Edge Function: portal-data  (v3: config / version / search / verify / claim / report)
 // The public parent portal reads ONE child's data after the parent proves who they are.
 // Needs: 17_portal_attempts.sql (attempt log). If that table is missing the function falls back to in-memory limits.
 // Optional secret PORTAL_HMAC_SECRET (any long random text). If absent, one is derived from the service key.
@@ -65,6 +65,25 @@ const isoDate = (v: unknown): string => {
   if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
   const d = new Date(s); return isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
 };
+const BUILD = 'portal-data v3 2026-11-24';
+const normName = (n: unknown) => String(n ?? '').toUpperCase().replace(/[^A-Z0-9 ]+/g, ' ').split(/\s+/).filter(Boolean).sort().join(' ');
+const accessKey = (s: any) => { const d = isoDate(s.date_of_birth); return d ? normName(s.full_name) + '|' + d : ''; };
+function semNow(): string {   // same labels as portal.html: 2026_2027_T1 (Sep-Dec), T2 (Jan-Apr), T3 (May-Aug)
+  const n = new Date(), y = n.getUTCFullYear(), m = n.getUTCMonth() + 1;
+  return (m >= 9 ? y + '_' + (y + 1) : (y - 1) + '_' + y) + '_' + (m >= 9 ? 'T1' : m <= 4 ? 'T2' : 'T3');
+}
+async function paidThisSem(s: any): Promise<boolean> {
+  const k = accessKey(s); if (!k) return false;
+  try { const { data } = await sb.from('portal_access').select('id').eq('key', k).eq('semester', semNow()).limit(1); return !!(data && data[0]); } catch { return false; }
+}
+function genPin(): string {
+  const a = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', b = new Uint8Array(8); crypto.getRandomValues(b);
+  return Array.from(b).map((x) => a.charAt(x % a.length)).join('');
+}
+async function sha16(s: string): Promise<string> {
+  const d = await crypto.subtle.digest('SHA-256', enc.encode(s));
+  return Array.from(new Uint8Array(d)).slice(0, 8).map((x) => x.toString(16).padStart(2, '0')).join('');
+}
 const like = (t: string) => '%' + t.replace(/[%_\\,()]/g, '') + '%';
 
 Deno.serve(async (req) => {
@@ -73,6 +92,8 @@ Deno.serve(async (req) => {
   try {
     const ip = clientIp(req);
     const b = await req.json().catch(() => ({}));
+
+    if (b.action === 'version') return out({ version: BUILD });
 
     // ----- config (public, harmless) -----
     if (b.action === 'config') {
@@ -113,7 +134,29 @@ Deno.serve(async (req) => {
       const s = data && data[0]; if (!s) return out({ error: 'expired' });
       const real = isoDate(s.date_of_birth); if (!real) return out({ error: 'nodob' });
       if (isoDate(b.dob) !== real) { await note('dob_fail', sid, ip); return out({ error: 'mismatch' }); }
-      return out({ student: pick(s, PAY_FIELDS) });
+      return out({ student: pick(s, PAY_FIELDS), paid: await paidThisSem(s) });
+    }
+
+    // ----- claim: access already paid this semester (on the transcript site or at the office) -> hand over the PIN, no second charge -----
+    if (b.action === 'claim') {
+      const hd = await readHandle(b.h);
+      if (!hd || hd === 'expired') return out({ error: 'expired' });
+      const sid = hd.id;
+      if ((await recent('dob_fail', 'student_id', sid, 60)) >= 5) return out({ error: 'locked' }, 429);
+      if ((await recent('dob_fail', 'ip', ip, 60)) >= 15) return out({ error: 'rate' }, 429);
+      const { data } = await sb.from('students').select('*').eq('id', sid).limit(1);
+      const s = data && data[0]; if (!s) return out({ error: 'expired' });
+      const real = isoDate(s.date_of_birth); if (!real) return out({ error: 'nodob' });
+      if (isoDate(b.dob) !== real) { await note('dob_fail', sid, ip); return out({ error: 'mismatch' }); }
+      if (!(await paidThisSem(s))) return out({ error: 'notpaid' });
+      let pin = String(s.portal_pin || '').toUpperCase();
+      if (!pin || !s.portal_unlocked) {
+        pin = genPin();
+        const { error } = await sb.from('students').update({ portal_pin: pin, portal_unlocked: true }).eq('id', s.id);
+        if (error) return out({ error: 'server' }, 500);
+      }
+      await note('claim', sid, ip);
+      return out({ pin });
     }
 
     // ----- report by PIN -----
@@ -126,6 +169,12 @@ Deno.serve(async (req) => {
       const s = data && data[0];
       if (!s) { await note('pin_fail', '', ip); return out({ student: null }); }
 
+      // Server-side limit: 2 views per PIN per semester (a new PIN starts a fresh count)
+      const vk = 'view:' + semNow() + ':' + await sha16(pin);
+      let used = -1;
+      try { const r = await sb.from('portal_attempts').select('id', { count: 'exact', head: true }).eq('kind', vk).eq('student_id', String(s.id)); if (!r.error) used = r.count ?? 0; } catch { /* table missing: client falls back */ }
+      if (used >= 2) return out({ limit: true });
+      if (used >= 0) await note(vk, String(s.id), ip);
       const { data: pays } = await sb.from('payments').select('*').eq('student_name', s.full_name).eq('class_name', s.class_name || '').eq('approval_status', 'confirmed').order('date', { ascending: false });
       const ids = (pays || []).map((p: any) => p.id).filter(Boolean);
       let allocs: any[] = [];
@@ -141,7 +190,7 @@ Deno.serve(async (req) => {
       const { data: cfg } = await sb.from('app_config').select('pay_settings').eq('key', 'main').maybeSingle();
       const arrears = Number(((cfg && cfg.pay_settings && cfg.pay_settings.arrears) || {})[s.id]) || 0;
       return out({
-        student: pick(s, FULL), payments, fines, arrears,
+        student: pick(s, FULL), payments, fines, arrears, views: used >= 0 ? { used: used + 1 } : null,
         pta: { total: (pta || []).length, attended: (pta || []).filter((x: { parent_attended: boolean }) => x.parent_attended).length },
       });
     }
