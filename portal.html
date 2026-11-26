@@ -7,453 +7,112 @@
 <title>Oguaa SHTS — Parent Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://js.paystack.co/v1/inline.js"></script>
-<style>
-:root{--g1:#0a3d1f;--g2:#1a6b3c;--g3:#2d9558;--g5:#e8f5ee;--gold:#c8860a;--goldp:#fef9ec;--red:#c0392b;--redp:#fdecea;--blue:#1565c0;--bluep:#e3f0ff;--amber:#d97706;--amberp:#fffbeb;--gray:#6b7280;--grayl:#f3f4f6;--grayb:#e5e7eb;--white:#fff;--text:#111827;--textm:#6b7280;--r:12px;--rs:8px;--shadow:0 2px 12px rgba(0,0,0,.08);}
-*{box-sizing:border-box;margin:0;padding:0;}
-body{font-family:'Outfit',sans-serif;background:#eef4ee;color:var(--text);min-height:100vh;font-size:15px;}
-.screen{display:none;min-height:100vh;flex-direction:column;}
-.screen.active{display:flex;}
-.ptopbar{background:var(--g1);color:#fff;padding:0 16px;height:56px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
-.ptopbar-b{display:flex;flex-direction:column;}
-.ptopbar-b span:first-child{font-size:15px;font-weight:800;}
-.ptopbar-b span:last-child{font-size:10px;opacity:.6;}
-.ptopbar button{background:none;border:1px solid rgba(255,255,255,.3);color:#fff;padding:5px 12px;border-radius:20px;font-family:'Outfit',sans-serif;font-size:11px;cursor:pointer;}
-.cw{flex:1;display:flex;align-items:center;justify-content:center;padding:20px;}
-.card{background:var(--white);border-radius:20px;padding:28px 24px;width:100%;max-width:400px;box-shadow:0 8px 40px rgba(0,0,0,.12);}
-.card-t{font-size:18px;font-weight:800;color:var(--g1);margin-bottom:6px;}
-.card-s{font-size:13px;color:var(--textm);margin-bottom:20px;line-height:1.5;}
-.fgrp{margin-bottom:14px;}
-.cand{border:1.5px solid var(--grayb);border-radius:12px;padding:10px 12px;margin-bottom:8px;cursor:pointer;background:#fff;}
-.cand:hover{border-color:var(--g3);}
-.cand.sel{border-color:var(--g2);background:var(--g5);}
-.cn{font-weight:700;font-size:14px;color:var(--g1);}
-.cm{font-size:12px;color:var(--textm);margin-top:2px;}
-.fgrp label{display:block;font-size:11px;font-weight:700;color:var(--textm);margin-bottom:5px;letter-spacing:.3px;}
-.fgrp input,.fgrp select{width:100%;padding:12px 14px;border:1.5px solid var(--grayb);border-radius:var(--rs);font-family:'Outfit',sans-serif;font-size:14px;color:var(--text);}
-.fgrp input:focus,.fgrp select:focus{outline:none;border-color:var(--g2);}
-.btn{display:flex;align-items:center;justify-content:center;gap:7px;width:100%;padding:13px;border:none;border-radius:var(--rs);font-family:'Outfit',sans-serif;font-size:15px;font-weight:700;cursor:pointer;}
-.btn-g{background:var(--g2);color:#fff;}
-.btn-g:hover{background:var(--g3);}
-.btn-g:disabled{background:var(--grayb);cursor:not-allowed;}
-.btn-gold{background:var(--gold);color:#fff;}
-.btn-out{background:transparent;border:1.5px solid var(--grayb);color:var(--text);}
-.btn-out:hover{border-color:var(--g2);color:var(--g2);}
-.alert{border-radius:var(--rs);padding:10px 14px;font-size:13px;margin-bottom:14px;display:none;line-height:1.5;}
-.a-red{background:var(--redp);color:var(--red);}
-.a-green{background:var(--g5);color:var(--g2);}
-.a-amber{background:var(--amberp);color:var(--amber);}
-.sc{background:linear-gradient(135deg,var(--g1),var(--g2));border-radius:12px;padding:16px;color:#fff;margin-bottom:16px;}
-.sc-n{font-size:17px;font-weight:800;margin-bottom:4px;}
-.sc-m{font-size:12px;opacity:.8;line-height:1.8;}
-.sc-bd{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;}
-.sc-b{padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700;background:rgba(255,255,255,.18);color:#fff;}
-.ps{border:1.5px solid var(--grayb);border-radius:10px;padding:14px;margin-bottom:16px;}
-.pr{display:flex;justify-content:space-between;padding:5px 0;font-size:13px;border-bottom:1px solid var(--grayl);}
-.pr:last-child{border-bottom:none;font-weight:700;font-size:15px;padding-top:10px;}
-.pr span:last-child{color:var(--g2);}
-.pc{padding:14px;max-width:600px;margin:0 auto;flex:1;}
-.pcard{background:var(--white);border-radius:var(--r);padding:16px;box-shadow:var(--shadow);margin-bottom:14px;}
-.pct{font-size:13px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:7px;}
-.sh{background:linear-gradient(135deg,var(--g1),var(--g2));border-radius:var(--r);padding:20px;color:#fff;margin-bottom:14px;}
-.sh-n{font-size:20px;font-weight:800;margin-bottom:4px;}
-.sh-m{font-size:12px;opacity:.75;line-height:1.8;}
-.sh-bd{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;}
-.sh-b{padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;background:rgba(255,255,255,.18);color:#fff;}
-.psg{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;}
-.psc{background:var(--white);border-radius:var(--r);padding:14px;box-shadow:var(--shadow);border-left:4px solid var(--g2);}
-.psc.gold{border-left-color:var(--gold);}
-.psc.red{border-left-color:var(--red);}
-.psc.blue{border-left-color:var(--blue);}
-.psv{font-size:22px;font-weight:800;}
-.psl{font-size:11px;color:var(--textm);margin-top:2px;}
-.twrap{overflow-x:auto;}
-table{width:100%;border-collapse:collapse;font-size:12px;}
-th{background:var(--grayl);padding:8px 10px;text-align:left;font-weight:700;font-size:11px;color:var(--textm);}
-td{padding:8px 10px;border-bottom:1px solid var(--grayb);}
-tr:last-child td{border-bottom:none;}
-.badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700;}
-.bg{background:var(--g5);color:var(--g2);}
-.pta-c{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;}
-.pta-d{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;}
-.pta-d.att{background:var(--g5);color:var(--g2);}
-.pta-d.miss{background:var(--redp);color:var(--red);}
-.un{background:var(--goldp);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--gold);text-align:center;margin-bottom:14px;}
-.cs{border:2px dashed var(--grayb);border-radius:10px;padding:20px;text-align:center;color:var(--textm);font-size:13px;}
-.loader{text-align:center;padding:30px;color:var(--textm);}
-.spin{display:inline-block;width:28px;height:28px;border:3px solid var(--grayb);border-top-color:var(--g2);border-radius:50%;animation:spin .8s linear infinite;margin-bottom:10px;}
-@keyframes spin{to{transform:rotate(360deg)}}
-.pf{text-align:center;font-size:11px;color:var(--textm);padding:20px 0 40px;line-height:1.8;}
-@media(min-width:480px){.psg{grid-template-columns:repeat(4,1fr);}}
-</style>
+<style>:root{--g1:#0a3d1f;--g2:#1a6b3c;--g3:#2d9558;--g5:#e8f5ee;--gold:#c8860a;--goldp:#fef9ec;--red:#c0392b;--redp:#fdecea;--blue:#1565c0;--bluep:#e3f0ff;--amber:#d97706;--amberp:#fffbeb;--gray:#6b7280;--grayl:#f3f4f6;--grayb:#e5e7eb;--white:#fff;--text:#111827;--textm:#6b7280;--r:12px;--rs:8px;--shadow:0 2px 12px rgba(0,0,0,.08)}*{box-sizing:border-box;margin:0;padding:0}body{font-family:"Outfit",sans-serif;background:#eef4ee;color:var(--text);min-height:100vh;font-size:15px}.screen{display:none;min-height:100vh;flex-direction:column}.screen.active{display:flex}.ptopbar{background:var(--g1);color:#fff;padding:0 16px;height:56px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}.ptopbar-b{display:flex;flex-direction:column}.ptopbar-b span:first-child{font-size:15px;font-weight:800}.ptopbar-b span:last-child{font-size:10px;opacity:.6}.ptopbar button{background:0 0;border:1px solid rgba(255,255,255,.3);color:#fff;padding:5px 12px;border-radius:20px;font-family:"Outfit",sans-serif;font-size:11px;cursor:pointer}.cw{flex:1;display:flex;align-items:center;justify-content:center;padding:20px}.card{background:var(--white);border-radius:20px;padding:28px 24px;width:100%;max-width:400px;box-shadow:0 8px 40px rgba(0,0,0,.12)}.card-t{font-size:18px;font-weight:800;color:var(--g1);margin-bottom:6px}.card-s{font-size:13px;color:var(--textm);margin-bottom:20px;line-height:1.5}.fgrp{margin-bottom:14px}.cand{border:1.5px solid var(--grayb);border-radius:12px;padding:10px 12px;margin-bottom:8px;cursor:pointer;background:#fff}.cand:hover{border-color:var(--g3)}.cand.sel{border-color:var(--g2);background:var(--g5)}.cn{font-weight:700;font-size:14px;color:var(--g1)}.cm{font-size:12px;color:var(--textm);margin-top:2px}.fgrp label{display:block;font-size:11px;font-weight:700;color:var(--textm);margin-bottom:5px;letter-spacing:.3px}.fgrp input,.fgrp select{width:100%;padding:12px 14px;border:1.5px solid var(--grayb);border-radius:var(--rs);font-family:"Outfit",sans-serif;font-size:14px;color:var(--text)}.fgrp input:focus,.fgrp select:focus{outline:0;border-color:var(--g2)}.btn{display:flex;align-items:center;justify-content:center;gap:7px;width:100%;padding:13px;border:0;border-radius:var(--rs);font-family:"Outfit",sans-serif;font-size:15px;font-weight:700;cursor:pointer}.btn-g{background:var(--g2);color:#fff}.btn-g:hover{background:var(--g3)}.btn-g:disabled{background:var(--grayb);cursor:not-allowed}.btn-gold{background:var(--gold);color:#fff}.btn-out{background:0 0;border:1.5px solid var(--grayb);color:var(--text)}.btn-out:hover{border-color:var(--g2);color:var(--g2)}.alert{border-radius:var(--rs);padding:10px 14px;font-size:13px;margin-bottom:14px;display:none;line-height:1.5}.a-red{background:var(--redp);color:var(--red)}.a-green{background:var(--g5);color:var(--g2)}.a-amber{background:var(--amberp);color:var(--amber)}.sc{background:linear-gradient(135deg,var(--g1),var(--g2));border-radius:12px;padding:16px;color:#fff;margin-bottom:16px}.sc-n{font-size:17px;font-weight:800;margin-bottom:4px}.sc-m{font-size:12px;opacity:.8;line-height:1.8}.sc-bd{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.sc-b{padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700;background:rgba(255,255,255,.18);color:#fff}.ps{border:1.5px solid var(--grayb);border-radius:10px;padding:14px;margin-bottom:16px}.pr{display:flex;justify-content:space-between;padding:5px 0;font-size:13px;border-bottom:1px solid var(--grayl)}.pr:last-child{border-bottom:none;font-weight:700;font-size:15px;padding-top:10px}.pr span:last-child{color:var(--g2)}.pc{padding:14px;max-width:600px;margin:0 auto;flex:1}.pcard{background:var(--white);border-radius:var(--r);padding:16px;box-shadow:var(--shadow);margin-bottom:14px}.pct{font-size:13px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:7px}.sh{background:linear-gradient(135deg,var(--g1),var(--g2));border-radius:var(--r);padding:20px;color:#fff;margin-bottom:14px}.sh-n{font-size:20px;font-weight:800;margin-bottom:4px}.sh-m{font-size:12px;opacity:.75;line-height:1.8}.sh-bd{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}.sh-b{padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;background:rgba(255,255,255,.18);color:#fff}.psg{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}.psc{background:var(--white);border-radius:var(--r);padding:14px;box-shadow:var(--shadow);border-left:4px solid var(--g2)}.psc.gold{border-left-color:var(--gold)}.psc.red{border-left-color:var(--red)}.psc.blue{border-left-color:var(--blue)}.psv{font-size:22px;font-weight:800}.psl{font-size:11px;color:var(--textm);margin-top:2px}.twrap{overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:12px}th{background:var(--grayl);padding:8px 10px;text-align:left;font-weight:700;font-size:11px;color:var(--textm)}td{padding:8px 10px;border-bottom:1px solid var(--grayb)}tr:last-child td{border-bottom:none}.badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700}.bg{background:var(--g5);color:var(--g2)}.pta-c{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.pta-d{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700}.pta-d.att{background:var(--g5);color:var(--g2)}.pta-d.miss{background:var(--redp);color:var(--red)}.un{background:var(--goldp);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--gold);text-align:center;margin-bottom:14px}.cs{border:2px dashed var(--grayb);border-radius:10px;padding:20px;text-align:center;color:var(--textm);font-size:13px}.loader{text-align:center;padding:30px;color:var(--textm)}.spin{display:inline-block;width:28px;height:28px;border:3px solid var(--grayb);border-top-color:var(--g2);border-radius:50%;animation:spin .8s linear infinite;margin-bottom:10px}@keyframes spin{to{transform:rotate(360deg)}}.pf{text-align:center;font-size:11px;color:var(--textm);padding:20px 0 40px;line-height:1.8}@media (min-width:480px){.psg{grid-template-columns:repeat(4,1fr)}}</style>
 </head>
 <body>
-
-<!-- SCREEN 1: BECE LOOKUP -->
 <div id="s-lookup" class="screen active">
-  <div class="ptopbar">
-    <div class="ptopbar-b"><span>Oguaa SHTS</span><span>Parent Portal</span></div>
-  </div>
-  <div class="cw">
-    <div class="card">
-      <div class="card-t">🔍 Find Your Ward</div>
-      <div class="card-s">Type your ward's name (first name and surname). Pick your ward from the list, then enter his or her date of birth.</div>
-      <div class="alert a-red" id="e-lookup"></div>
-      <div class="fgrp">
-        <label>WARD'S NAME</label>
-        <input type="text" id="name-inp" placeholder="e.g. KWAME ASANTE" autocomplete="off"
-          style="font-size:16px;text-align:center;text-transform:uppercase"
-          onkeydown="if(event.key==='Enter')searchName()"
-          oninput="this.value=this.value.toUpperCase()">
-      </div>
-      <button class="btn btn-g" onclick="searchName()" id="btn-lookup">Search →</button>
-      <div id="cand-box" style="margin-top:14px"></div>
-      <div id="dob-box" style="display:none;margin-top:6px">
-        <div class="fgrp">
-          <label>DATE OF BIRTH OF <span id="dob-who"></span></label>
-          <input type="date" id="dob-inp" max="" style="text-align:center;font-size:16px" onkeydown="if(event.key==='Enter')verifyDob()">
-        </div>
-        <button class="btn btn-g" onclick="verifyDob()" id="btn-dob">Continue →</button>
-      </div>
-      <div style="margin-top:16px;border-top:1px solid var(--grayb);padding-top:14px;">
-        <div style="font-size:12px;color:var(--textm);margin-bottom:8px;font-weight:600">ALREADY HAVE A PIN?</div>
-        <button class="btn btn-out" onclick="goScreen('s-pin')" style="padding:10px">Enter PIN directly →</button>
-        <div style="font-size:12px;color:var(--textm);margin:16px 0 8px;font-weight:600">LOOKING FOR THE OFFICIAL REPORT CARD / TRANSCRIPT?</div>
-        <button class="btn btn-out" onclick="openTranscript()" style="padding:10px">📄 Open the transcript site →</button>
-      </div>
-    </div>
-  </div>
+<div class="ptopbar">
+<div class="ptopbar-b"><span>Oguaa SHTS</span><span>Parent Portal</span></div>
 </div>
-
-<!-- SCREEN 2: CONFIRM & PAY -->
+<div class="cw">
+<div class="card">
+<div class="card-t">🔍 Find Your Ward</div>
+<div class="card-s">Type your ward's name. One name or more is fine (first name, surname or both). Pick your ward from the list, then enter his or her date of birth.</div>
+<div class="alert a-red" id="e-lookup"></div>
+<div class="fgrp">
+<label>WARD'S NAME</label>
+<input type="text" id="name-inp" placeholder="e.g. KWAME ASANTE" autocomplete="off"
+style="font-size:16px;text-align:center;text-transform:uppercase"
+onkeydown="if(event.key==='Enter')searchName()"
+oninput="this.value=this.value.toUpperCase()">
+</div>
+<button class="btn btn-g" onclick="searchName()" id="btn-lookup">Search →</button>
+<div id="cand-box" style="margin-top:14px"></div>
+<div id="dob-box" style="display:none;margin-top:6px">
+<div class="fgrp">
+<label>DATE OF BIRTH OF <span id="dob-who"></span></label>
+<input type="date" id="dob-inp" max="" style="text-align:center;font-size:16px" onkeydown="if(event.key==='Enter')verifyDob()">
+</div>
+<button class="btn btn-g" onclick="verifyDob()" id="btn-dob">Continue →</button>
+</div>
+<div style="margin-top:16px;border-top:1px solid var(--grayb);padding-top:14px;">
+<div style="font-size:12px;color:var(--textm);margin-bottom:8px;font-weight:600">ALREADY HAVE A PIN?</div>
+<button class="btn btn-out" onclick="goScreen('s-pin')" style="padding:10px">Enter PIN directly →</button>
+<div style="font-size:12px;color:var(--textm);margin:16px 0 8px;font-weight:600">LOOKING FOR THE OFFICIAL REPORT CARD / TRANSCRIPT?</div>
+<button class="btn btn-out" onclick="openTranscript()" style="padding:10px">📄 Open the transcript site →</button>
+</div>
+</div>
+</div>
+</div>
 <div id="s-pay" class="screen">
-  <div class="ptopbar">
-    <div class="ptopbar-b"><span>Oguaa SHTS</span><span>Portal Payment</span></div>
-    <button onclick="goScreen('s-lookup')">← Back</button>
-  </div>
-  <div class="cw">
-    <div class="card">
-      <div class="card-t">✅ Confirm & Pay</div>
-      <div id="sc-box"></div>
-      <div class="alert a-red" id="e-pay"></div>
-      <div class="alert a-amber" id="i-pay" style="display:block">ℹ️ Payment gives <strong>2 views</strong> of your ward's report this semester. PIN sent by SMS immediately.</div>
-      <div class="ps" id="pay-sum"></div>
-      <div class="fgrp">
-        <label>YOUR PHONE (to receive PIN by SMS)</label>
-        <input type="tel" id="pay-phone" placeholder="e.g. 0241234567">
-      </div>
-      <div class="fgrp">
-        <label>NETWORK</label>
-        <select id="pay-net">
-          <option value="mtn">MTN Mobile Money</option>
-          <option value="vod">Vodafone Cash</option>
-          <option value="tgo">AirtelTigo Money</option>
-        </select>
-      </div>
-      <button class="btn btn-gold" onclick="pay()" id="btn-pay">💳 Pay via Mobile Money</button>
-      <div style="text-align:center;font-size:11px;color:var(--textm);margin-top:10px">Secured by Paystack · Encrypted payment</div>
-    </div>
-  </div>
+<div class="ptopbar">
+<div class="ptopbar-b"><span>Oguaa SHTS</span><span>Portal Payment</span></div>
+<button onclick="goScreen('s-lookup')">← Back</button>
 </div>
-
-<!-- SCREEN 3: PIN ENTRY -->
+<div class="cw">
+<div class="card">
+<div class="card-t">✅ Confirm & Pay</div>
+<div id="sc-box"></div>
+<div class="alert a-red" id="e-pay"></div>
+<div class="alert a-amber" id="i-pay" style="display:block">ℹ️ Payment gives <strong>2 views</strong> of your ward's report this semester. PIN sent by SMS immediately.</div>
+<div class="ps" id="pay-sum"></div>
+<div class="fgrp">
+<label>YOUR PHONE (to receive PIN by SMS)</label>
+<input type="tel" id="pay-phone" placeholder="e.g. 0241234567">
+</div>
+<div class="fgrp">
+<label>NETWORK</label>
+<select id="pay-net">
+<option value="mtn">MTN Mobile Money</option>
+<option value="vod">Vodafone Cash</option>
+<option value="tgo">AirtelTigo Money</option>
+</select>
+</div>
+<button class="btn btn-gold" onclick="pay()" id="btn-pay">💳 Pay via Mobile Money</button>
+<div style="text-align:center;font-size:11px;color:var(--textm);margin-top:10px">Secured by Paystack · Encrypted payment</div>
+</div>
+</div>
+</div>
 <div id="s-pin" class="screen">
-  <div class="ptopbar">
-    <div class="ptopbar-b"><span>Oguaa SHTS</span><span>Enter PIN</span></div>
-    <button onclick="goScreen('s-lookup')">← Back</button>
-  </div>
-  <div class="cw">
-    <div class="card">
-      <div class="card-t">🔐 Enter Your PIN</div>
-      <div class="card-s">The 8-character PIN sent to you by SMS from Oguaa SHTS.</div>
-      <div class="alert a-red" id="e-pin"></div>
-      <div class="alert a-green" id="ok-pin"></div>
-      <div class="fgrp">
-        <label>ACCESS PIN</label>
-        <input type="text" id="pin-inp" maxlength="8" placeholder="XXXXXXXX"
-          style="letter-spacing:4px;font-size:20px;text-align:center;text-transform:uppercase"
-          onkeydown="if(event.key==='Enter')checkPin()"
-          oninput="this.value=this.value.toUpperCase()">
-      </div>
-      <button class="btn btn-g" onclick="checkPin()" id="btn-pin">View Report →</button>
-      <div style="text-align:center;margin-top:12px">
-        <button class="btn btn-out" onclick="goScreen('s-lookup')" style="padding:10px;font-size:13px">No PIN yet? Pay here</button>
-      </div>
-      <div style="font-size:11px;color:var(--textm);text-align:center;margin-top:14px;line-height:1.7">
-        PIN valid for 2 views per semester.<br>School office: 0241557824 / 0542322727
-      </div>
-    </div>
-  </div>
+<div class="ptopbar">
+<div class="ptopbar-b"><span>Oguaa SHTS</span><span>Enter PIN</span></div>
+<button onclick="goScreen('s-lookup')">← Back</button>
 </div>
-
-<!-- SCREEN 4: REPORT -->
+<div class="cw">
+<div class="card">
+<div class="card-t">🔐 Enter Your PIN</div>
+<div class="card-s">The 8-character PIN sent to you by SMS from Oguaa SHTS.</div>
+<div class="alert a-red" id="e-pin"></div>
+<div class="alert a-green" id="ok-pin"></div>
+<div class="fgrp">
+<label>ACCESS PIN</label>
+<input type="text" id="pin-inp" maxlength="8" placeholder="XXXXXXXX"
+style="letter-spacing:4px;font-size:20px;text-align:center;text-transform:uppercase"
+onkeydown="if(event.key==='Enter')checkPin()"
+oninput="this.value=this.value.toUpperCase()">
+</div>
+<button class="btn btn-g" onclick="checkPin()" id="btn-pin">View Report →</button>
+<div style="text-align:center;margin-top:12px">
+<button class="btn btn-out" onclick="goScreen('s-lookup')" style="padding:10px;font-size:13px">No PIN yet? Pay here</button>
+</div>
+<div style="font-size:11px;color:var(--textm);text-align:center;margin-top:14px;line-height:1.7">
+PIN valid for 2 views per semester.<br>School office: 0241557824 / 0542322727
+</div>
+</div>
+</div>
+</div>
 <div id="s-report" class="screen">
-  <div class="ptopbar">
-    <div class="ptopbar-b">
-      <span id="rpt-name">Report</span>
-      <span id="rpt-class"></span>
-    </div>
-    <button onclick="logout()">Sign Out</button>
-  </div>
-  <div class="pc" id="rpt-content">
-    <div class="loader"><div class="spin"></div><div>Loading…</div></div>
-  </div>
+<div class="ptopbar">
+<div class="ptopbar-b">
+<span id="rpt-name">Report</span>
+<span id="rpt-class"></span>
 </div>
-
-<script>
-const SUPA_URL='https://wwcvvnscekpdrtadqgjs.supabase.co';
-const SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind3Y3Z2bnNjZWtwZHJ0YWRxZ2pzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2OTM1MjgsImV4cCI6MjA4OTI2OTUyOH0.EoZiOyBYzHz9Dh7A-iZW1Kzaa7dM8JJO9EuGtYAMnVk';
-const HDR={'Content-Type':'application/json','apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY};
-async function pcall(body){
-  var r=await fetch(SUPA_URL+'/functions/v1/portal-data',{method:'POST',headers:HDR,body:JSON.stringify(body)});
-  return await r.json();
-}
-
-var STUDENT=null, FEE=10, PS_KEY='', TRANSCRIPT_URL='https://transcript-oguaashts.onrender.com';
-
-function sem(){var n=new Date(),y=n.getFullYear(),m=n.getMonth()+1,ay=m>=9?(y+'_'+(y+1)):((y-1)+'_'+y),t=m>=9?'T1':m<=4?'T2':'T3';return ay+'_'+t;}
-function goScreen(id){document.querySelectorAll('.screen').forEach(function(s){s.classList.remove('active');});document.getElementById(id).classList.add('active');window.scrollTo(0,0);}
-function showErr(id,msg){var e=document.getElementById(id);if(e){e.textContent=msg;e.style.display='block';}}
-function hideErr(id){var e=document.getElementById(id);if(e)e.style.display='none';}
-function logout(){STUDENT=null;CLAIM=null;PAID=false;document.getElementById('name-inp').value='';document.getElementById('cand-box').innerHTML='';document.getElementById('dob-box').style.display='none';document.getElementById('dob-inp').value='';PICK=null;CANDS=[];document.getElementById('pin-inp').value='';goScreen('s-lookup');}
-
-function openTranscript(){window.open(TRANSCRIPT_URL,'_blank','noopener,noreferrer');}
-async function loadCfg(){
-  try{
-    var d=await pcall({action:'config'});
-    FEE=parseFloat(d.portalFee||10);PS_KEY=d.paystackPublicKey||'';if(d.transcriptUrl&&/^https:\/\/[^\s"'<>]+$/i.test(d.transcriptUrl)){TRANSCRIPT_URL=String(d.transcriptUrl).replace(/\/+$/,'');}
-  }catch(e){}
-}
-
-// SCREEN 1: name -> choose your ward (class and last digits of the BECE number help tell similar names apart) -> date of birth
-function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
-var CANDS=[], PICK=null, CLAIM=null, PAID=false;
-async function searchName(){
-  var name=(document.getElementById('name-inp').value||'').trim().toUpperCase();
-  hideErr('e-lookup');PICK=null;document.getElementById('dob-box').style.display='none';document.getElementById('cand-box').innerHTML='';
-  if(name.split(/\s+/).filter(function(t){return t.length>=2;}).length<2){showErr('e-lookup','Please type at least two names, for example the first name and the surname.');return;}
-  var btn=document.getElementById('btn-lookup');btn.textContent='Searching…';btn.disabled=true;
-  try{
-    var d=await pcall({action:'search',name:name});
-    if(d.error==='rate'){showErr('e-lookup','Too many attempts. Please wait a few minutes and try again.');return;}
-    if(d.tooMany){showErr('e-lookup','Too many students match. Please type the full name.');return;}
-    CANDS=d.results||[];
-    if(!CANDS.length){showErr('e-lookup','No student found with that name.\nCheck the spelling or contact the school office: 0241557824 / 0542322727');return;}
-    document.getElementById('cand-box').innerHTML='<div style="font-size:12px;font-weight:700;color:var(--textm);margin-bottom:6px">'+(CANDS.length>1?'SEVERAL MATCHES. CHOOSE YOUR WARD:':'IS THIS YOUR WARD?')+'</div>'
-      +CANDS.map(function(c,i){return '<div class="cand" id="cand-'+i+'" onclick="pickCand('+i+')"><div class="cn">'+esc(c.name)+'</div><div class="cm">Class: '+esc(c.class||'—')+' &nbsp;|&nbsp; BECE No.: '+esc(c.bece||'—')+'</div></div>';}).join('');
-    if(CANDS.length===1)pickCand(0);
-  }catch(e){showErr('e-lookup','Connection error. Check your internet and try again.');}
-  finally{btn.textContent='Search →';btn.disabled=false;}
-}
-function pickCand(i){
-  PICK=CANDS[i];hideErr('e-lookup');
-  CANDS.forEach(function(c,k){var el=document.getElementById('cand-'+k);if(el)el.className='cand'+(k===i?' sel':'');});
-  document.getElementById('dob-who').textContent=PICK.name;
-  var di=document.getElementById('dob-inp');di.value='';di.max=new Date().toISOString().split('T')[0];
-  document.getElementById('dob-box').style.display='block';
-}
-async function verifyDob(){
-  hideErr('e-lookup');
-  var dob=document.getElementById('dob-inp').value;
-  if(!PICK){showErr('e-lookup','Please choose your ward from the list.');return;}
-  if(!dob){showErr('e-lookup','Please enter the date of birth.');return;}
-  var btn=document.getElementById('btn-dob');btn.textContent='Checking…';btn.disabled=true;
-  try{
-    var d=await pcall({action:'verify',h:PICK.h,dob:dob});
-    if(d.error==='rate'||d.error==='locked'){showErr('e-lookup','Too many wrong attempts for this student. Please wait an hour or contact the school office: 0241557824 / 0542322727');return;}
-    if(d.error==='expired'){showErr('e-lookup','This search has expired. Please search again.');PICK=null;document.getElementById('dob-box').style.display='none';return;}
-    if(d.error==='nodob'){showErr('e-lookup','Your ward\'s date of birth is not yet recorded. Please contact the school office: 0241557824 / 0542322727');return;}
-    if(d.error==='mismatch'||!d.student){showErr('e-lookup','That date of birth does not match our records. Please check it and try again.');return;}
-    STUDENT=d.student;CLAIM={h:PICK.h,dob:dob};PAID=(d.paid===true);document.getElementById('dob-inp').value='';buildPayScreen(STUDENT);goScreen('s-pay');
-  }catch(e){showErr('e-lookup','Connection error. Check your internet and try again.');}
-  finally{btn.textContent='Continue →';btn.disabled=false;}
-}
-
-// SCREEN 2
-function buildPayScreen(s){
-  document.getElementById('sc-box').innerHTML=
-    '<div class="sc"><div class="sc-n">'+esc(s.full_name)+'</div>'
-    +'<div class="sc-m">Class: '+esc(s.class_name)+' &nbsp;|&nbsp; Form: '+esc(s.form||'—')+'<br>Programme: '+esc(s.programme||'—')+' &nbsp;|&nbsp; House: '+esc(s.house||'—')+'</div>'
-    +'<div class="sc-bd">'+(s.residential_status?'<span class="sc-b">'+esc(s.residential_status)+'</span>':'')+(s.admission_year?'<span class="sc-b">'+esc(s.admission_year)+'</span>':'')+'</div></div>';
-  var s2=sem();
-  document.getElementById('pay-sum').innerHTML=
-    '<div class="pr"><span>Portal Access Fee</span><span>GHS '+FEE.toFixed(2)+'</span></div>'
-    +'<div class="pr"><span>Semester</span><span>'+s2.replace(/_/g,' ')+'</span></div>'
-    +'<div class="pr"><span>Views</span><span>2 views</span></div>'
-    +'<div class="pr"><span><strong>Total</strong></span><span><strong>GHS '+FEE.toFixed(2)+'</strong></span></div>';
-  var pb=document.getElementById('paid-box');
-  if(!pb){pb=document.createElement('div');pb.id='paid-box';var psm=document.getElementById('pay-sum');psm.parentNode.insertBefore(pb,psm.nextSibling);}
-  var payBtn=document.getElementById('btn-pay'),payPh=document.getElementById('pay-phone'),phg=payPh?payPh.parentNode:null;
-  if(PAID){
-    pb.innerHTML='<div class="alert a-green" style="display:block">✅ Access for this semester has already been paid (on the transcript site or at the school office). You do not need to pay again.</div><button class="btn btn-g" id="btn-claim" onclick="claimPin()">Get my PIN →</button>';
-    if(payBtn)payBtn.style.display='none';if(phg)phg.style.display='none';
-  }else{pb.innerHTML='';if(payBtn)payBtn.style.display='';if(phg)phg.style.display='';}
-}
-
-async function claimPin(){
-  hideErr('e-pay');if(!CLAIM)return;
-  var btn=document.getElementById('btn-claim');btn.textContent='Please wait…';btn.disabled=true;
-  try{
-    var d=await pcall({action:'claim',h:CLAIM.h,dob:CLAIM.dob});
-    if(d.pin){
-      CLAIM=null;document.getElementById('pin-inp').value=d.pin;
-      document.getElementById('paid-box').innerHTML='<div class="alert a-green" style="display:block">Your PIN is <strong style="font-size:20px;letter-spacing:2px">'+esc(d.pin)+'</strong><br>Please write it down. It gives 2 views of the report this semester.</div><button class="btn btn-g" onclick="goScreen(\'s-pin\')">Continue to the report →</button>';
-      return;
-    }
-    if(d.error==='notpaid')showErr('e-pay','We could not find a payment for this semester. Please pay below or contact the school office: 0241557824 / 0542322727');
-    else if(d.error==='rate'||d.error==='locked')showErr('e-pay','Too many attempts. Please wait and try again, or contact the school office: 0241557824 / 0542322727');
-    else if(d.error==='expired'){showErr('e-pay','This session has expired. Please search for your ward again.');}
-    else showErr('e-pay','Something went wrong. Please try again or contact the school office.');
-  }catch(e){showErr('e-pay','Connection error. Check your internet and try again.');}
-  finally{if(btn){btn.textContent='Get my PIN →';btn.disabled=false;}}
-}
-async function pay(){
-  var phone=(document.getElementById('pay-phone').value||'').trim();
-  hideErr('e-pay');
-  if(!phone){showErr('e-pay','Enter your phone number to receive the PIN by SMS');return;}
-  if(!PS_KEY){showErr('e-pay','Online payment not yet configured. Please pay at the school office.');return;}
-  var btn=document.getElementById('btn-pay');
-  btn.textContent='Opening payment…';btn.disabled=true;
-  var ref='OGUAA_'+Date.now()+'_'+Math.random().toString(36).substring(2,8).toUpperCase();
-  try{
-    var handler=PaystackPop.setup({
-      key:PS_KEY,
-      email:'parent.'+STUDENT.bece_index+'@oguaashts.edu.gh',
-      amount:Math.round(FEE*100),
-      currency:'GHS',
-      ref:ref,
-      channels:['mobile_money'],
-      metadata:{
-        bece_index:STUDENT.bece_index,student_name:STUDENT.full_name,
-        student_id:STUDENT.id,parent_phone:phone,semester:sem(),
-        custom_fields:[{display_name:'Student',variable_name:'student',value:STUDENT.full_name}]
-      },
-      onClose:function(){btn.textContent='💳 Pay via Mobile Money';btn.disabled=false;},
-      callback:function(response){btn.textContent='Verifying…';verifyPay(response.reference,phone);}
-    });
-    handler.openIframe();
-  }catch(e){showErr('e-pay','Could not open payment. Try again or pay at school.');btn.textContent='💳 Pay via Mobile Money';btn.disabled=false;}
-}
-
-async function verifyPay(ref,phone){
-  var btn=document.getElementById('btn-pay');
-  try{
-    var r=await fetch(SUPA_URL+'/functions/v1/portal-payment',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':'Bearer '+SUPA_KEY},
-      body:JSON.stringify({reference:ref,student_id:STUDENT.id,student_name:STUDENT.full_name,bece_index:STUDENT.bece_index,parent_phone:phone,semester:sem()})
-    });
-    var res=await r.json();
-    if(res.success&&res.pin){
-      document.getElementById('pin-inp').value=res.pin;
-      document.getElementById('ok-pin').textContent='✅ Payment confirmed! PIN: '+res.pin+' — SMS sent to '+phone;
-      document.getElementById('ok-pin').style.display='block';
-      goScreen('s-pin');
-    }else{
-      showErr('e-pay','Payment received but PIN error. Keep ref: '+ref+' and contact school: 0241557824 / 0542322727');
-    }
-  }catch(e){showErr('e-pay','Verification error. Keep ref: '+ref+' — contact school: 0241557824 / 0542322727');}
-  finally{btn.textContent='💳 Pay via Mobile Money';btn.disabled=false;}
-}
-
-// SCREEN 3
-async function checkPin(){
-  var pin=(document.getElementById('pin-inp').value||'').trim().toUpperCase();
-  hideErr('e-pin');
-  if(pin.length<6){showErr('e-pin','Enter your full PIN');return;}
-  var btn=document.getElementById('btn-pin');btn.textContent='Checking…';btn.disabled=true;
-  try{
-    var res=await pcall({action:'report',pin:pin});
-    if(res.error==='rate'){showErr('e-pin','Too many attempts. Please wait a few minutes and try again.');return;}
-    if(res.limit){showErr('e-pin','PIN limit reached (2 views) for this semester.\nPay for new access or contact school: 0241557824 / 0542322727');return;}
-    var d=res.student?[res.student]:[];
-    if(!d||!d.length){showErr('e-pin','PIN not found or not activated.\nIf you just paid, wait a moment and retry.\nSchool office: 0241557824 / 0542322727');return;}
-    var s=d[0];
-    var vn;
-    if(res.views&&res.views.used){vn=res.views.used;}
-    else{var uk='portal_'+pin+'_'+sem();var uses=parseInt(localStorage.getItem(uk)||'0');
-      if(uses>=2){showErr('e-pin','PIN limit reached (2 views) for this semester.\nPay for new access or contact school: 0241557824 / 0542322727');return;}
-      localStorage.setItem(uk,String(uses+1));vn=uses+1;}
-    await showReport(s,vn,res);
-  }catch(e){showErr('e-pin','Connection error. Check internet and try again.');}
-  finally{btn.textContent='View Report →';btn.disabled=false;}
-}
-
-// SCREEN 4
-async function showReport(s,viewNum,extra){
-  goScreen('s-report');
-  document.getElementById('rpt-name').textContent=s.full_name||'Report';
-  document.getElementById('rpt-class').textContent=(s.class_name||'')+(s.form?' · '+s.form:'');
-  document.getElementById('rpt-content').innerHTML='<div class="loader"><div class="spin"></div><div>Loading report…</div></div>';
-
-  var pays=[],ptaAtt=0,ptaTotal=0;
-  pays=(extra&&extra.payments)||[];
-  if(extra&&extra.pta){ptaTotal=extra.pta.total;ptaAtt=extra.pta.attended;}
-
-  var paid=pays.reduce(function(a,p){return a+parseFloat(p.raw_amount||p.amount||0);},0);
-  var usesLeft=Math.max(0,2-viewNum);
-  var h='';
-
-  h+='<div class="un">⏳ '+usesLeft+' view'+(usesLeft===1?'':'s')+' remaining this semester</div>';
-
-  h+='<div class="sh"><div class="sh-n">'+(s.full_name||'')+'</div>'
-    +'<div class="sh-m">'+(s.class_name?'Class: '+s.class_name+' &nbsp;|&nbsp; ':'')+(s.form?'Form: '+s.form+' &nbsp;|&nbsp; ':'')+(s.programme||'')+'</div>'
-    +'<div class="sh-bd">'+(s.house?'<span class="sh-b">🏠 '+s.house+'</span>':'')+(s.residential_status?'<span class="sh-b">'+s.residential_status+'</span>':'')+(s.gender?'<span class="sh-b">'+s.gender+'</span>':'')+'</div></div>';
-
-  h+='<div class="psg">'
-    +'<div class="psc gold"><div class="psv">GHS '+paid.toLocaleString()+'</div><div class="psl">Total paid</div></div>'
-    +'<div class="psc"><div class="psv">'+pays.length+'</div><div class="psl">Payments</div></div>'
-    +'<div class="psc blue"><div class="psv">'+ptaAtt+'/'+(ptaTotal||'—')+'</div><div class="psl">PTA attended</div></div>'
-    +'<div class="psc red"><div class="psv">'+(s.status==='active'?'Active':s.status||'—')+'</div><div class="psl">Status</div></div>'
-    +'</div>';
-
-  h+='<div class="pcard"><div class="pct">💰 Payment History</div>';
-  if(!pays.length){h+='<div style="text-align:center;padding:16px;color:var(--textm);font-size:13px">No confirmed payments yet.</div>';}
-  else{h+='<div class="twrap"><table><tr><th>Date</th><th>GHS</th><th>Purpose</th></tr>'+pays.map(function(p){return'<tr><td>'+(p.date||'')+'</td><td><strong>'+parseFloat(p.raw_amount||p.amount||0).toLocaleString()+'</strong></td><td>'+((p.allocations&&p.allocations.length)?p.allocations.map(function(a){return'<span class="badge bg" style="margin:1px">'+esc(a.purpose)+' · GHS '+parseFloat(a.amount||0).toLocaleString()+'</span>';}).join(' '):'<span class="badge" style="background:#fff3cd;color:#856404">'+(p.purpose||'Awaiting allocation by the school')+'</span>')+'</td></tr>';}).join('')+'</table></div>';}
-  h+='</div>';
-
-  var fines=(extra&&extra.fines)||[],arrears=(extra&&extra.arrears)||0;
-  if(fines.length||arrears>0){
-    var ftot=fines.reduce(function(a,f){return a+parseFloat(f.amount||0);},0);
-    h+='<div class="pcard"><div class="pct">⚠️ Other amounts owing</div>'
-      +(arrears>0?'<div style="font-size:13px;padding:6px 0;border-bottom:1px solid var(--grayb)">Balance brought forward from last year: <strong>GHS '+parseFloat(arrears).toLocaleString()+'</strong></div>':'')
-      +fines.map(function(f){return'<div style="font-size:13px;padding:6px 0;border-bottom:1px solid var(--grayb)">'+esc(f.note||'Fine')+': <strong>GHS '+parseFloat(f.amount||0).toLocaleString()+'</strong></div>';}).join('')
-      +'<div style="font-size:11px;color:var(--textm);margin-top:8px">Please pay at the school office. Amounts may be reduced if the school waives a fine.</div></div>';
-  }
-
-  if(ptaTotal>0){
-    h+='<div class="pcard"><div class="pct">👥 PTA Attendance</div>'
-      +'<div style="font-size:13px;margin-bottom:10px">Parent attended <strong>'+ptaAtt+'</strong> of <strong>'+ptaTotal+'</strong> meetings.</div>'
-      +'<div class="pta-c">';
-    for(var i=0;i<ptaTotal;i++)h+='<div class="pta-d '+(i<ptaAtt?'att':'miss')+'">'+(i<ptaAtt?'✓':'✗')+'</div>';
-    h+='</div></div>';
-  }
-
-  h+='<div class="pcard"><div class="pct">📚 Academic Performance</div><div class="cs"><div style="font-size:28px;margin-bottom:8px">📊</div>Scores and grades will appear here once subject teachers enter results for this term.</div></div>';
-  h+='<div class="pcard"><div class="pct">⭐ Behaviour & Conduct</div><div class="cs"><div style="font-size:28px;margin-bottom:8px">🌟</div>Conduct report from House Master/Mistress will appear here.</div></div>';
-
-  h+='<div class="pcard"><div class="pct">👤 Student Information</div><table style="width:100%">'
-    +pr2('Full Name',s.full_name)+pr2('BECE Index',s.bece_index||'—')+pr2('Date of Birth',s.date_of_birth||'—')
-    +pr2('NHIS Number',s.nhis_number||'—')+pr2('Hometown',s.hometown||'—')+pr2('Admission Year',s.admission_year||'—')
-    +'</table></div>';
-
-  if(s.items_submitted&&s.items_submitted.length){
-    h+='<div class="pcard"><div class="pct">✅ Items Submitted</div><div style="display:flex;gap:6px;flex-wrap:wrap">'
-      +s.items_submitted.map(function(i){return'<span class="badge bg">✓ '+i+'</span>';}).join('')+'</div></div>';
-  }
-
-  h+='<div class="pcard"><div class="pct">📄 Official Report Card / Transcript</div><div style="font-size:13px;margin-bottom:10px">Download your ward\'s official report card or transcript from the school\'s transcript site.</div><button class="btn btn-g" onclick="openTranscript()">Open the transcript site →</button></div>';
-  h+='<div class="pf">Oguaa Senior High Technical School · Cape Coast, Ghana<br>School office: 0241557824 / 0542322727<br>ASMaP — Adombra School Management Platform</div>';
-
-  document.getElementById('rpt-content').innerHTML=h;
-}
-
-function pr2(l,v){return'<tr><td style="color:var(--textm);font-size:12px;padding:6px 0;width:40%;vertical-align:top">'+l+'</td><td style="font-weight:600;font-size:13px;padding:6px 0">'+esc(v||'—')+'</td></tr>';}
-
-window.addEventListener('load',async function(){
-  await loadCfg();
-  var p=new URLSearchParams(window.location.search).get('pin');
-  if(p){document.getElementById('pin-inp').value=p.toUpperCase();goScreen('s-pin');checkPin();}
-});
-</script>
+<button onclick="logout()">Sign Out</button>
+</div>
+<div class="pc" id="rpt-content">
+<div class="loader"><div class="spin"></div><div>Loading…</div></div>
+</div>
+</div>
+<script>const SUPA_URL="https://wwcvvnscekpdrtadqgjs.supabase.co";const SUPA_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind3Y3Z2bnNjZWtwZHJ0YWRxZ2pzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2OTM1MjgsImV4cCI6MjA4OTI2OTUyOH0.EoZiOyBYzHz9Dh7A-iZW1Kzaa7dM8JJO9EuGtYAMnVk";const HDR={"Content-Type":"application/json",apikey:SUPA_KEY,Authorization:"Bearer "+SUPA_KEY};async function pcall(e){var t=await fetch(SUPA_URL+"/functions/v1/portal-data",{method:"POST",headers:HDR,body:JSON.stringify(e)});return await t.json()}var STUDENT=null,FEE=10,PS_KEY="",TRANSCRIPT_URL="https://transcript-oguaashts.onrender.com";function sem(){var e=new Date,t=e.getFullYear(),n=e.getMonth()+1,a=n>=9?t+"_"+(t+1):t-1+"_"+t,o=n>=9?"T1":n<=4?"T2":"T3";return a+"_"+o}function goScreen(e){document.querySelectorAll(".screen").forEach(function(e){e.classList.remove("active")});document.getElementById(e).classList.add("active");window.scrollTo(0,0)}function showErr(e,t){var n=document.getElementById(e);if(n){n.textContent=t;n.style.display="block"}}function hideErr(e){var t=document.getElementById(e);if(t)t.style.display="none"}function logout(){STUDENT=null;CLAIM=null;PAID=false;document.getElementById("name-inp").value="";document.getElementById("cand-box").innerHTML="";document.getElementById("dob-box").style.display="none";document.getElementById("dob-inp").value="";PICK=null;CANDS=[];document.getElementById("pin-inp").value="";goScreen("s-lookup")}function openTranscript(){window.open(TRANSCRIPT_URL,"_blank","noopener,noreferrer")}async function loadCfg(){try{var e=await pcall({action:"config"});FEE=parseFloat(e.portalFee||10);PS_KEY=e.paystackPublicKey||"";if(e.transcriptUrl&&/^https:\/\/[^\s"'<>]+$/i.test(e.transcriptUrl)){TRANSCRIPT_URL=String(e.transcriptUrl).replace(/\/+$/,"")}}catch(e){}}function esc(e){return String(e==null?"":e).replace(/[&<>"']/g,function(e){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[e]})}var CANDS=[],PICK=null,CLAIM=null,PAID=false;async function searchName(){var e=(document.getElementById("name-inp").value||"").trim().toUpperCase();hideErr("e-lookup");PICK=null;document.getElementById("dob-box").style.display="none";document.getElementById("cand-box").innerHTML="";var t=e.split(/\s+/).filter(function(e){return e.length>=2});if(!t.length||t.length===1&&t[0].length<3){showErr("e-lookup","Please type your ward's name (at least 3 letters).");return}var n=document.getElementById("btn-lookup");n.textContent="Searching…";n.disabled=true;try{var a=await pcall({action:"search",name:e});if(a.error==="rate"){showErr("e-lookup","Too many attempts. Please wait a few minutes and try again.");return}if(a.tooMany){showErr("e-lookup","Too many students match. Please type the full name.");return}CANDS=a.results||[];if(!CANDS.length){showErr("e-lookup","No student found with that name.\nCheck the spelling or contact the school office: 0241557824 / 0542322727");return}document.getElementById("cand-box").innerHTML='<div style="font-size:12px;font-weight:700;color:var(--textm);margin-bottom:6px">'+(CANDS.length>1?"SEVERAL MATCHES. CHOOSE YOUR WARD:":"IS THIS YOUR WARD?")+"</div>"+CANDS.map(function(e,t){return'<div class="cand" id="cand-'+t+'" onclick="pickCand('+t+')"><div class="cn">'+esc(e.name)+'</div><div class="cm">Class: '+esc(e.class||"—")+" &nbsp;|&nbsp; BECE No.: "+esc(e.bece||"—")+"</div></div>"}).join("");if(CANDS.length===1)pickCand(0)}catch(e){showErr("e-lookup","Connection error. Check your internet and try again.")}finally{n.textContent="Search →";n.disabled=false}}function pickCand(e){PICK=CANDS[e];hideErr("e-lookup");CANDS.forEach(function(t,n){var a=document.getElementById("cand-"+n);if(a)a.className="cand"+(n===e?" sel":"")});document.getElementById("dob-who").textContent=PICK.name;var t=document.getElementById("dob-inp");t.value="";t.max=(new Date).toISOString().split("T")[0];document.getElementById("dob-box").style.display="block"}async function verifyDob(){hideErr("e-lookup");var e=document.getElementById("dob-inp").value;if(!PICK){showErr("e-lookup","Please choose your ward from the list.");return}if(!e){showErr("e-lookup","Please enter the date of birth.");return}var t=document.getElementById("btn-dob");t.textContent="Checking…";t.disabled=true;try{var n=await pcall({action:"verify",h:PICK.h,dob:e});if(n.error==="rate"||n.error==="locked"){showErr("e-lookup","Too many wrong attempts for this student. Please wait an hour or contact the school office: 0241557824 / 0542322727");return}if(n.error==="expired"){showErr("e-lookup","This search has expired. Please search again.");PICK=null;document.getElementById("dob-box").style.display="none";return}if(n.error==="nodob"){showErr("e-lookup","Your ward's date of birth is not yet recorded. Please contact the school office: 0241557824 / 0542322727");return}if(n.error==="mismatch"||!n.student){showErr("e-lookup","That date of birth does not match our records. Please check it and try again.");return}STUDENT=n.student;CLAIM={h:n.ph||PICK.h,dob:e};PAID=n.paid===true;document.getElementById("dob-inp").value="";buildPayScreen(STUDENT);goScreen("s-pay")}catch(e){showErr("e-lookup","Connection error. Check your internet and try again.")}finally{t.textContent="Continue →";t.disabled=false}}function buildPayScreen(e){document.getElementById("sc-box").innerHTML='<div class="sc"><div class="sc-n">'+esc(e.full_name)+"</div>"+'<div class="sc-m">Class: '+esc(e.class_name)+" &nbsp;|&nbsp; Form: "+esc(e.form||"—")+"<br>Programme: "+esc(e.programme||"—")+" &nbsp;|&nbsp; House: "+esc(e.house||"—")+"</div>"+'<div class="sc-bd">'+(e.residential_status?'<span class="sc-b">'+esc(e.residential_status)+"</span>":"")+(e.admission_year?'<span class="sc-b">'+esc(e.admission_year)+"</span>":"")+"</div></div>";var t=sem();document.getElementById("pay-sum").innerHTML='<div class="pr"><span>Portal Access Fee</span><span>GHS '+FEE.toFixed(2)+"</span></div>"+'<div class="pr"><span>Semester</span><span>'+t.replace(/_/g," ")+"</span></div>"+'<div class="pr"><span>Views</span><span>2 views</span></div>'+'<div class="pr"><span><strong>Total</strong></span><span><strong>GHS '+FEE.toFixed(2)+"</strong></span></div>";var n=document.getElementById("paid-box");if(!n){n=document.createElement("div");n.id="paid-box";var a=document.getElementById("pay-sum");a.parentNode.insertBefore(n,a.nextSibling)}var o=document.getElementById("btn-pay"),r=document.getElementById("pay-phone"),s=r?r.parentNode:null;if(PAID){n.innerHTML='<div class="alert a-green" style="display:block">✅ Access for this semester has already been paid (on the transcript site or at the school office). You do not need to pay again.</div><button class="btn btn-g" id="btn-claim" onclick="claimPin()">Get my PIN →</button>';if(o)o.style.display="none";if(s)s.style.display="none"}else{n.innerHTML="";if(o)o.style.display="";if(s)s.style.display=""}}async function claimPin(){hideErr("e-pay");if(!CLAIM)return;var e=document.getElementById("btn-claim");e.textContent="Please wait…";e.disabled=true;try{var t=await pcall({action:"claim",h:CLAIM.h,dob:CLAIM.dob});if(t.pin){CLAIM=null;document.getElementById("pin-inp").value=t.pin;document.getElementById("paid-box").innerHTML='<div class="alert a-green" style="display:block">Your PIN is <strong style="font-size:20px;letter-spacing:2px">'+esc(t.pin)+'</strong><br>Please write it down. It gives 2 views of the report this semester.</div><button class="btn btn-g" onclick="goScreen(\'s-pin\')">Continue to the report →</button>';return}if(t.error==="notpaid")showErr("e-pay","We could not find a payment for this semester. Please pay below or contact the school office: 0241557824 / 0542322727");else if(t.error==="rate"||t.error==="locked")showErr("e-pay","Too many attempts. Please wait and try again, or contact the school office: 0241557824 / 0542322727");else if(t.error==="expired"){showErr("e-pay","This session has expired. Please search for your ward again.")}else showErr("e-pay","Something went wrong. Please try again or contact the school office.")}catch(e){showErr("e-pay","Connection error. Check your internet and try again.")}finally{if(e){e.textContent="Get my PIN →";e.disabled=false}}}async function pay(){var e=(document.getElementById("pay-phone").value||"").trim();hideErr("e-pay");if(!e){showErr("e-pay","Enter your phone number to receive the PIN by SMS");return}if(!PS_KEY){showErr("e-pay","Online payment not yet configured. Please pay at the school office.");return}var t=document.getElementById("btn-pay");t.textContent="Opening payment…";t.disabled=true;var n="OGUAA_"+Date.now()+"_"+Math.random().toString(36).substring(2,8).toUpperCase();try{var a=PaystackPop.setup({key:PS_KEY,email:"parent."+STUDENT.bece_index+"@oguaashts.edu.gh",amount:Math.round(FEE*100),currency:"GHS",ref:n,channels:["mobile_money"],metadata:{bece_index:STUDENT.bece_index,student_name:STUDENT.full_name,student_id:STUDENT.id,parent_phone:e,semester:sem(),custom_fields:[{display_name:"Student",variable_name:"student",value:STUDENT.full_name}]},onClose:function(){t.textContent="💳 Pay via Mobile Money";t.disabled=false},callback:function(n){t.textContent="Verifying…";verifyPay(n.reference,e)}});a.openIframe()}catch(e){showErr("e-pay","Could not open payment. Try again or pay at school.");t.textContent="💳 Pay via Mobile Money";t.disabled=false}}async function verifyPay(e,t){var n=document.getElementById("btn-pay");try{if(!CLAIM){showErr("e-pay","Your session has expired. Please search for your ward again. Keep ref: "+e);return}var a=await fetch(SUPA_URL+"/functions/v1/portal-payment",{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+SUPA_KEY},body:JSON.stringify({reference:e,h:CLAIM.h,dob:CLAIM.dob,parent_phone:t})});var o=await a.json();if(o.success&&o.pin){document.getElementById("pin-inp").value=o.pin;document.getElementById("ok-pin").textContent="✅ Payment confirmed! PIN: "+o.pin+" — SMS sent to "+t;document.getElementById("ok-pin").style.display="block";goScreen("s-pin")}else if(o.error==="expired"||o.error==="mismatch"||o.error==="locked"){showErr("e-pay","Payment received but we could not confirm your ward. Keep ref: "+e+" and contact school: 0241557824 / 0542322727")}else{showErr("e-pay","Payment received but PIN error. Keep ref: "+e+" and contact school: 0241557824 / 0542322727")}}catch(t){showErr("e-pay","Verification error. Keep ref: "+e+" — contact school: 0241557824 / 0542322727")}finally{n.textContent="💳 Pay via Mobile Money";n.disabled=false}}async function checkPin(){var e=(document.getElementById("pin-inp").value||"").trim().toUpperCase();hideErr("e-pin");if(e.length<6){showErr("e-pin","Enter your full PIN");return}var t=document.getElementById("btn-pin");t.textContent="Checking…";t.disabled=true;try{var n=await pcall({action:"report",pin:e});if(n.error==="rate"){showErr("e-pin","Too many attempts. Please wait a few minutes and try again.");return}if(n.limit){showErr("e-pin","PIN limit reached (2 views) for this semester.\nPay for new access or contact school: 0241557824 / 0542322727");return}var a=n.student?[n.student]:[];if(!a||!a.length){showErr("e-pin","PIN not found or not activated.\nIf you just paid, wait a moment and retry.\nSchool office: 0241557824 / 0542322727");return}var o=a[0];var r;if(n.views&&n.views.used){r=n.views.used}else{var s="portal_"+e+"_"+sem();var i=parseInt(localStorage.getItem(s)||"0");if(i>=2){showErr("e-pin","PIN limit reached (2 views) for this semester.\nPay for new access or contact school: 0241557824 / 0542322727");return}localStorage.setItem(s,String(i+1));r=i+1}await showReport(o,r,n)}catch(e){showErr("e-pin","Connection error. Check internet and try again.")}finally{t.textContent="View Report →";t.disabled=false}}async function showReport(e,t,n){goScreen("s-report");document.getElementById("rpt-name").textContent=e.full_name||"Report";document.getElementById("rpt-class").textContent=(e.class_name||"")+(e.form?" · "+e.form:"");document.getElementById("rpt-content").innerHTML='<div class="loader"><div class="spin"></div><div>Loading report…</div></div>';var a=[],o=0,r=0;a=n&&n.payments||[];if(n&&n.pta){r=n.pta.total;o=n.pta.attended}var s=a.reduce(function(e,t){return e+parseFloat(t.raw_amount||t.amount||0)},0);var i=Math.max(0,2-t);var d="";d+='<div class="un">⏳ '+i+" view"+(i===1?"":"s")+" remaining this semester</div>";d+='<div class="sh"><div class="sh-n">'+(e.full_name||"")+"</div>"+'<div class="sh-m">'+(e.class_name?"Class: "+e.class_name+" &nbsp;|&nbsp; ":"")+(e.form?"Form: "+e.form+" &nbsp;|&nbsp; ":"")+(e.programme||"")+"</div>"+'<div class="sh-bd">'+(e.house?'<span class="sh-b">🏠 '+e.house+"</span>":"")+(e.residential_status?'<span class="sh-b">'+e.residential_status+"</span>":"")+(e.gender?'<span class="sh-b">'+e.gender+"</span>":"")+"</div></div>";d+='<div class="psg">'+'<div class="psc gold"><div class="psv">GHS '+s.toLocaleString()+'</div><div class="psl">Total paid</div></div>'+'<div class="psc"><div class="psv">'+a.length+'</div><div class="psl">Payments</div></div>'+'<div class="psc blue"><div class="psv">'+o+"/"+(r||"—")+'</div><div class="psl">PTA attended</div></div>'+'<div class="psc red"><div class="psv">'+(e.status==="active"?"Active":e.status||"—")+'</div><div class="psl">Status</div></div>'+"</div>";d+='<div class="pcard"><div class="pct">💰 Payment History</div>';if(!a.length){d+='<div style="text-align:center;padding:16px;color:var(--textm);font-size:13px">No confirmed payments yet.</div>'}else{d+='<div class="twrap"><table><tr><th>Date</th><th>GHS</th><th>Purpose</th></tr>'+a.map(function(e){return"<tr><td>"+(e.date||"")+"</td><td><strong>"+parseFloat(e.raw_amount||e.amount||0).toLocaleString()+"</strong></td><td>"+(e.allocations&&e.allocations.length?e.allocations.map(function(e){return'<span class="badge bg" style="margin:1px">'+esc(e.purpose)+" · GHS "+parseFloat(e.amount||0).toLocaleString()+"</span>"}).join(" "):'<span class="badge" style="background:#fff3cd;color:#856404">'+(e.purpose||"Awaiting allocation by the school")+"</span>")+"</td></tr>"}).join("")+"</table></div>"}d+="</div>";var l=n&&n.fines||[],c=n&&n.arrears||0;if(l.length||c>0){var p=l.reduce(function(e,t){return e+parseFloat(t.amount||0)},0);d+='<div class="pcard"><div class="pct">⚠️ Other amounts owing</div>'+(c>0?'<div style="font-size:13px;padding:6px 0;border-bottom:1px solid var(--grayb)">Balance brought forward from last year: <strong>GHS '+parseFloat(c).toLocaleString()+"</strong></div>":"")+l.map(function(e){return'<div style="font-size:13px;padding:6px 0;border-bottom:1px solid var(--grayb)">'+esc(e.note||"Fine")+": <strong>GHS "+parseFloat(e.amount||0).toLocaleString()+"</strong></div>"}).join("")+'<div style="font-size:11px;color:var(--textm);margin-top:8px">Please pay at the school office. Amounts may be reduced if the school waives a fine.</div></div>'}if(r>0){d+='<div class="pcard"><div class="pct">👥 PTA Attendance</div>'+'<div style="font-size:13px;margin-bottom:10px">Parent attended <strong>'+o+"</strong> of <strong>"+r+"</strong> meetings.</div>"+'<div class="pta-c">';for(var u=0;u<r;u++)d+='<div class="pta-d '+(u<o?"att":"miss")+'">'+(u<o?"✓":"✗")+"</div>";d+="</div></div>"}d+='<div class="pcard"><div class="pct">📚 Academic Performance</div><div class="cs"><div style="font-size:28px;margin-bottom:8px">📊</div>Scores and grades will appear here once subject teachers enter results for this term.</div></div>';d+='<div class="pcard"><div class="pct">⭐ Behaviour & Conduct</div><div class="cs"><div style="font-size:28px;margin-bottom:8px">🌟</div>Conduct report from House Master/Mistress will appear here.</div></div>';d+='<div class="pcard"><div class="pct">👤 Student Information</div><table style="width:100%">'+pr2("Full Name",e.full_name)+pr2("BECE Index",e.bece_index||"—")+pr2("Date of Birth",e.date_of_birth||"—")+pr2("NHIS Number",e.nhis_number||"—")+pr2("Hometown",e.hometown||"—")+pr2("Admission Year",e.admission_year||"—")+"</table></div>";if(e.items_submitted&&e.items_submitted.length){d+='<div class="pcard"><div class="pct">✅ Items Submitted</div><div style="display:flex;gap:6px;flex-wrap:wrap">'+e.items_submitted.map(function(e){return'<span class="badge bg">✓ '+e+"</span>"}).join("")+"</div></div>"}d+='<div class="pcard"><div class="pct">📄 Official Report Card / Transcript</div><div style="font-size:13px;margin-bottom:10px">Download your ward\'s official report card or transcript from the school\'s transcript site.</div><button class="btn btn-g" onclick="openTranscript()">Open the transcript site →</button></div>';d+='<div class="pf">Oguaa Senior High Technical School · Cape Coast, Ghana<br>School office: 0241557824 / 0542322727<br>ASMaP — Adombra School Management Platform</div>';document.getElementById("rpt-content").innerHTML=d}function pr2(e,t){return'<tr><td style="color:var(--textm);font-size:12px;padding:6px 0;width:40%;vertical-align:top">'+e+'</td><td style="font-weight:600;font-size:13px;padding:6px 0">'+esc(t||"—")+"</td></tr>"}window.addEventListener("load",async function(){await loadCfg();var e=new URLSearchParams(window.location.search).get("pin");if(e){document.getElementById("pin-inp").value=e.toUpperCase();goScreen("s-pin");checkPin()}});</script>
 </body>
 </html>

@@ -1,3 +1,0 @@
-update public.app_config
-set settings = (((settings::jsonb) - 'mode' - 'liveSince')::text)::json
-where key = 'main';

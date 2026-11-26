@@ -63,5 +63,22 @@
       "source": "/app",
       "destination": "/index.html"
     }
+  ],
+  "redirects": [
+    {
+      "source": "/(.*\\.(?:sql|md))",
+      "destination": "/",
+      "permanent": false
+    },
+    {
+      "source": "/supabase/(.*)",
+      "destination": "/",
+      "permanent": false
+    },
+    {
+      "source": "/(curl|reset)",
+      "destination": "/",
+      "permanent": false
+    }
   ]
 }

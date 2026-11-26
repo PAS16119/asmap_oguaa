@@ -1,0 +1,5 @@
+*.sql
+*.md
+supabase
+curl
+reset
